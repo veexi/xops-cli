@@ -508,7 +508,7 @@ func (o *SshOptions) resolveNode(ctx context.Context, provider *config.Repositor
 
 	shouldRemember := utils.EffectiveRememberPolicy(o.Remember, provider.Snapshot()) == utils.RememberPolicyAlways
 
-	res, err := provider.EnsureNodeContext(ctx, config.EnsureNodeOptions{
+	res, err := provider.PrepareNodeContext(ctx, config.EnsureNodeOptions{
 		Target:       o.Target,
 		DefaultUser:  defaultUser,
 		Password:     "",

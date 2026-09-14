@@ -130,6 +130,12 @@ func zeroBytes(b []byte) {
 	}
 }
 
+// ConnectionConfirmer is an optional provider capability invoked immediately
+// after SSH authentication, before recording credentials or opening sessions.
+type ConnectionConfirmer interface {
+	ConfirmConnection(context.Context, string) error
+}
+
 // ConnectionProvider 提供指定节点的底层连接配置。
 type ConnectionProvider interface {
 	// GetConfig 获取指定 nodeID 的连接配置

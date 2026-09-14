@@ -96,6 +96,8 @@ type ImportResult struct {
 // configuration state and serializes the complete clone-validate-persist-
 // publish sequence. It intentionally does not expose its Store.
 type Repository struct {
+	pendingMu         sync.RWMutex
+	pending           map[string]*pendingConnection
 	commitMu          sync.Mutex
 	provider          *Provider
 	store             Store
@@ -313,15 +315,17 @@ func nodeSudoVersion(cfg *Configuration, nodeID string) (Version, error) {
 	return sha256.Sum256(data), nil
 }
 
-// ResolveConnection returns one atomic connection snapshot. Persistent nodes
-// receive field versions from the same configuration copy as their values;
-// OpenSSH virtual nodes remain read-only and therefore have no UpdateRef.
+// ResolveConnection returns one atomic connection snapshot. Saved and prepared
+// nodes receive field versions from the same copy as their values. Prepared
+// versions become writable after confirmation; OpenSSH virtual nodes remain
+// read-only and therefore have no UpdateRef.
 func (r *Repository) ResolveConnection(nodeID string) (ConnectionSnapshot, error) {
 	if r == nil {
 		return ConnectionSnapshot{}, fmt.Errorf("configuration repository is nil")
 	}
 
-	configuration := r.provider.Snapshot()
+	provider := r.connectionProvider(nodeID)
+	configuration := provider.Snapshot()
 	if node, exists := configuration.Nodes.Get(nodeID); exists {
 		host, hostExists := configuration.Hosts.Get(node.HostRef)
 		if !hostExists {
@@ -350,7 +354,7 @@ func (r *Repository) ResolveConnection(nodeID string) (ConnectionSnapshot, error
 		}, nil
 	}
 
-	node, host, identity, err := r.provider.Resolve(nodeID)
+	node, host, identity, err := provider.Resolve(nodeID)
 	if err != nil {
 		return ConnectionSnapshot{}, err
 	}
@@ -1127,7 +1131,7 @@ func (r *Repository) UpdateSudoAtVersionContext(ctx context.Context, nodeID, sud
 }
 
 func (r *Repository) Resolve(nodeID string) (models.Node, models.Host, models.Identity, error) {
-	return r.provider.Resolve(nodeID)
+	return r.connectionProvider(nodeID).Resolve(nodeID)
 }
 
 func (r *Repository) GetNode(nodeID string) (models.Node, bool) {

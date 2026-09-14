@@ -47,7 +47,11 @@ xops host tags
 
 `inventory` remains a compatibility alias for `host`, and `host load` remains an alias for `host import`. New scripts should use the canonical commands above.
 
+Imports save only nodes that pass SSH verification by default, and explicitly report failed rows as not saved. Use `--skip-verify` to save without connecting, or `--save-on-verify-failure` to verify but save failed rows as well; the flags are mutually exclusive. `host add` and TUI additions verify first and ask before saving a failed connection (default: no). Offline addition is available through `host add --skip-verify` or the TUI form's skip-verification choice.
+
 #### 3. SSH & TUI
+
+New nodes discovered by SSH, SFTP, SCP or exec are saved only after the SSH handshake and authentication succeed. Connection timeouts, refused connections and authentication failures do not add nodes. Saving does not wait for a shell, remote command or file transfer to succeed. Existing nodes survive connection failures, and explicit additions and imports can use `--skip-verify` for offline saving. `--remember` controls credential secrets; successfully authenticated node details are saved independently.
 
 ```bash
 # Launch interactive TUI

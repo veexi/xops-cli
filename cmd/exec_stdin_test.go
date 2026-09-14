@@ -149,64 +149,29 @@ func TestExecNonExistingNodeNotPersisted(t *testing.T) {
 	}
 	nodeID := tasks[0].nodeID
 
-	// 验证它目前确实在临时内存注册了
-	if _, ok := provider.GetNode(nodeID); !ok {
-		t.Fatal("expected temporary node to be registered in provider before cleaning")
+	// Preparation must be usable for connection but absent from saved assets.
+	if _, err := provider.ResolveConnection(nodeID); err != nil {
+		t.Fatalf("resolve pending connection: %v", err)
 	}
-
-	// 2. 调用 cleanUnusedTempNodes，由于它从未连接成功验证，应当被清理删除
-	if err := o.cleanUnusedTempNodes(provider); err != nil {
-		t.Fatalf("cleanUnusedTempNodes() failed: %v", err)
-	}
-
-	// 验证该节点已经被从 provider 中完全清除
 	if _, ok := provider.GetNode(nodeID); ok {
-		t.Error("expected temporary node to be removed from provider after cleanUnusedTempNodes")
+		t.Fatal("pending node was published before authentication")
 	}
-
-	// 3. 验证如果连接成功了（即从 tempNodes 移除了），它不应该被清理
-	tasks, _, _ = o.buildTasksFromHosts(context.Background(), provider)
-	newNodeID := tasks[0].nodeID
-
-	o.verifyTempNode(newNodeID) // 模拟连接成功将其验证并保留
-	if err := o.cleanUnusedTempNodes(provider); err != nil {
-		t.Fatalf("cleanUnusedTempNodes() failed: %v", err)
+	disk, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if _, ok := provider.GetNode(newNodeID); !ok {
-		t.Error("expected successfully connected temporary node to remain in provider after cleanUnusedTempNodes")
+	if len(disk.Nodes.Keys()) != 0 || len(disk.Hosts.Keys()) != 0 || len(disk.Identities.Keys()) != 0 {
+		t.Fatal("preparation persisted connection entities")
 	}
-}
-
-func TestExecHasChangesDetection(t *testing.T) {
-	// 1. 验证没有任何变更时，hasChanges 应返回 false
-	o := NewExecOptions()
-	if o.hasChanges() {
-		t.Error("expected hasChanges to be false initially")
+	if err := provider.ConfirmNodeContext(t.Context(), nodeID); err != nil {
+		t.Fatalf("confirm authenticated connection: %v", err)
 	}
-
-	// 2. 验证当有已有节点被更新时，hasChanges 返回 true
-	o2 := NewExecOptions()
-	o2.nodeUpdated = true
-	if !o2.hasChanges() {
-		t.Error("expected hasChanges to be true when nodeUpdated is true")
+	disk, err = store.Load()
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// 3. 验证当有成功连接的临时节点被添加时，hasChanges 返回 true
-	o3 := NewExecOptions()
-	o3.addTempNode(config.NodeRef{ID: "temp-01"})
-	o3.verifyTempNode("temp-01") // 模拟连接成功
-	if !o3.hasChanges() {
-		t.Error("expected hasChanges to be true when temporary nodes are verified")
-	}
-
-	// 4. 验证当有临时节点但全部连接失败被清理后，hasChanges 依然返回 false
-	o4 := NewExecOptions()
-	o4.addTempNode(config.NodeRef{ID: "temp-02"})
-	// 模拟清理（不调用 verifyTempNode 而是直接 cleanUnusedTempNodes）
-	// 这时 savedTempNodes 为 0，nodeUpdated 为 false
-	if o4.hasChanges() {
-		t.Error("expected hasChanges to be false when temporary nodes are not verified")
+	if _, ok := disk.Nodes.Get(nodeID); !ok {
+		t.Fatal("authenticated node was not saved")
 	}
 }
 

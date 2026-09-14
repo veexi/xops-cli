@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wentf9/xops-cli/cmd/utils"
@@ -39,12 +38,8 @@ type ExecOptions struct {
 
 	stdinScript bool
 
-	tempNodesMu    sync.Mutex
-	tempNodes      map[string]config.NodeRef
-	savedTempNodes int
-	nodeUpdated    bool
-	stdout         io.Writer
-	stderr         io.Writer
+	stdout io.Writer
+	stderr io.Writer
 }
 
 func NewExecOptions() *ExecOptions {
@@ -288,13 +283,6 @@ func (o *ExecOptions) RunContext(ctx context.Context) (retErr error) {
 	if err != nil {
 		return fmt.Errorf("create configuration repository: %w", err)
 	}
-	defer func() {
-		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancelCleanup()
-		if cleanupErr := o.cleanUnusedTempNodesContext(cleanupCtx, provider); cleanupErr != nil {
-			retErr = errors.Join(retErr, cleanupErr)
-		}
-	}()
 	// 准备执行内容
 	var execCmd string
 	var isScript bool
@@ -407,9 +395,6 @@ func (o *ExecOptions) runInteractive(
 	cmd string,
 ) (retErr error) {
 	client, err := connector.Connect(ctx, task.nodeID)
-	if err == nil {
-		o.verifyTempNode(task.nodeID)
-	}
 	if err != nil {
 		return fmt.Errorf("[%s] %s: %w", task.host, i18n.T("fw_connect_failed"), err)
 	}
@@ -484,7 +469,7 @@ func (o *ExecOptions) getOrCreateNode(ctx context.Context, repository *config.Re
 	if o.Sudo {
 		sudoMode = models.SudoModeSudo
 	}
-	res, err := repository.EnsureNodeContext(ctx, config.EnsureNodeOptions{
+	res, err := repository.PrepareNodeContext(ctx, config.EnsureNodeOptions{
 		Target:       target,
 		Password:     "",
 		IdentityFile: identityFile,
@@ -498,9 +483,6 @@ func (o *ExecOptions) getOrCreateNode(ctx context.Context, repository *config.Re
 	}
 
 	if res.Created {
-		if shouldTrackTemporaryNode(res.Mutation, nil) {
-			o.addTempNode(res.Mutation.Ref)
-		}
 		return res.NodeID, true, nil
 	}
 
@@ -508,24 +490,11 @@ func (o *ExecOptions) getOrCreateNode(ctx context.Context, repository *config.Re
 	if updateErr != nil {
 		return "", false, updateErr
 	}
-	if updated {
-		o.nodeUpdated = true
-	}
 	return res.NodeID, updated, nil
-}
-
-// shouldTrackTemporaryNode admits only a successfully durable creation to the
-// cleanup set. An applied-but-undurable mutation is already authoritative in
-// the repository and must never be rolled back automatically.
-func shouldTrackTemporaryNode(mutation config.NodeMutation, createErr error) bool {
-	return createErr == nil && mutation.Outcome.Applied && mutation.Outcome.Durable && mutation.Ref.ID != ""
 }
 
 func (o *ExecOptions) executeTask(ctx context.Context, connector *ssh.Connector, t execHostTask, execCmd string, isScript bool, totalTasks int, stdoutMu *sync.Mutex) (retErr error) {
 	client, err := connector.Connect(ctx, t.nodeID)
-	if err == nil {
-		o.verifyTempNode(t.nodeID)
-	}
 	if err != nil {
 		return fmt.Errorf("[%s] connect failed: %w", t.host, err)
 	}
@@ -878,31 +847,6 @@ func (o *ExecOptions) updateNodeSudo(node *models.Node) bool {
 	return updated
 }
 
-func (o *ExecOptions) addTempNode(ref config.NodeRef) {
-	if ref.ID == "" {
-		return
-	}
-	o.tempNodesMu.Lock()
-	defer o.tempNodesMu.Unlock()
-	if o.tempNodes == nil {
-		o.tempNodes = make(map[string]config.NodeRef)
-	}
-	o.tempNodes[ref.ID] = ref
-}
-
-func (o *ExecOptions) verifyTempNode(nodeID string) {
-	o.tempNodesMu.Lock()
-	defer o.tempNodesMu.Unlock()
-	if _, ok := o.tempNodes[nodeID]; ok {
-		delete(o.tempNodes, nodeID)
-		o.savedTempNodes++
-	}
-}
-
-type tempNodeDeleter interface {
-	DeleteNodeAtRefContext(context.Context, config.NodeRef) (config.MutationOutcome, error)
-}
-
 // putConfiguredNodeContext is retained for SCP's shared node preparation
 // path. It accepts only Repository and chooses a create-only or exact-ref
 // replacement transaction; there is deliberately no Provider fallback.
@@ -926,50 +870,4 @@ func joinConnectorCloseError(retErr *error, closer connectorCloser) {
 	if closeErr := closer.CloseAll(); closeErr != nil {
 		*retErr = errors.Join(*retErr, fmt.Errorf("close SSH connector failed: %w", closeErr))
 	}
-}
-
-// cleanUnusedTempNodes removes nodes that were created for this execution but
-// never reached a successful connection. It deliberately keeps repository I/O
-// outside tempNodesMu so a slow persistent store cannot block task bookkeeping.
-func (o *ExecOptions) cleanUnusedTempNodes(provider tempNodeDeleter) error {
-	return o.cleanUnusedTempNodesContext(context.Background(), provider)
-}
-
-func (o *ExecOptions) cleanUnusedTempNodesContext(ctx context.Context, provider tempNodeDeleter) error {
-	o.tempNodesMu.Lock()
-	pending := o.tempNodes
-	o.tempNodes = nil
-	o.tempNodesMu.Unlock()
-
-	failed := make(map[string]config.NodeRef)
-	var cleanupErr error
-	for nodeID, ref := range pending {
-		_, err := provider.DeleteNodeAtRefContext(ctx, ref)
-		if err != nil {
-			failed[nodeID] = ref
-			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete unused temporary node %q failed: %w", nodeID, err))
-		}
-	}
-	if len(failed) == 0 {
-		return cleanupErr
-	}
-
-	// Keep only failed deletions. Nodes added while cleanup was in progress are
-	// already in o.tempNodes and must remain pending as well.
-	o.tempNodesMu.Lock()
-	if o.tempNodes == nil {
-		o.tempNodes = make(map[string]config.NodeRef, len(failed))
-	}
-	for nodeID, ref := range failed {
-		o.tempNodes[nodeID] = ref
-	}
-	o.tempNodesMu.Unlock()
-
-	return cleanupErr
-}
-
-func (o *ExecOptions) hasChanges() bool {
-	o.tempNodesMu.Lock()
-	defer o.tempNodesMu.Unlock()
-	return o.nodeUpdated || o.savedTempNodes > 0
 }

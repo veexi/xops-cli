@@ -317,7 +317,7 @@ inventory_tags_short:
 inventory_load_short:
   other: "从 CSV 文件导入主机及凭据并验证保存"
 inventory_load_long:
-  other: "从 CSV 文件导入主机、用户名和密码并保存到配置文件中。\n支持表头识别: 主机, 端口, 别名, 用户, 密码, 私钥, 私钥密码\n会建立 SSH 连接验证凭据的准确性。"
+  other: "从 CSV 导入主机、用户名和凭据。默认只保存通过 SSH 验证的节点；验证失败的行明确提示未保存，已有配置不变。支持列：host, port, alias, user, password, key, keypass。使用 --skip-verify 跳过验证直接保存；使用 --save-on-verify-failure 进行验证但失败仍然保存。这两个选项互斥。"
 inventory_tag_add_short:
   other: "将节点加入标签组"
 inventory_tag_remove_short:
@@ -1050,3 +1050,51 @@ credential_migrate_restart:
 
 credential_save_unavailable:
   other: "自动凭据保存不可用；本次连接将不保存凭据"
+
+inventory_add_long:
+  other: "添加单个节点。默认先验证 SSH 身份认证；验证失败时提示原因并询问是否仍然保存（默认不保存）。使用 --skip-verify 跳过验证直接保存。"
+
+flag_skip_verify:
+  other: "跳过 SSH 验证，直接保存节点"
+
+flag_save_on_verify_failure:
+  other: "进行 SSH 验证，但验证失败仍然保存；结果仍会报告验证失败"
+
+inventory_verify_not_saved:
+  other: "[{{.Node}}] 验证失败，未保存（已有配置保持不变）：{{.Error}}"
+
+inventory_verify_failed_saved:
+  other: "[{{.Node}}] 验证失败，已按 --save-on-verify-failure 保存：{{.Error}}"
+
+inventory_verified_saved:
+  other: "[{{.Node}}] SSH 验证通过，已保存"
+
+inventory_saved_unverified:
+  other: "[{{.Node}}] 已跳过验证，未经验证直接保存"
+
+inventory_not_saved:
+  other: "[{{.Node}}] 未保存：{{.Error}}"
+
+inventory_confirm_save_unverified:
+  other: "验证失败，是否仍然保存此节点？"
+
+inventory_save_declined:
+  other: "节点未保存"
+
+tui_status_verifying:
+  other: "正在验证 SSH 身份认证，尚未保存节点…"
+
+tui_form_verification:
+  other: "保存前验证"
+
+tui_form_verification_help:
+  other: "默认先验证；验证失败时询问是否仍然保存"
+
+tui_verify_default:
+  other: "进行验证（默认）"
+
+tui_verify_skip:
+  other: "跳过验证直接保存"
+
+inventory_save_incomplete:
+  other: "[{{.Node}}] 更改已应用，但保存后续步骤报错；请检查配置后再重试：{{.Error}}"

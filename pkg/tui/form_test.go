@@ -265,14 +265,15 @@ func TestUpdateForm_CtrlS_Valid(t *testing.T) {
 		repository: repository,
 		state:      viewForm,
 		formState: &nodeFormState{
-			isEdit:   false,
-			alias:    "server1",
-			user:     "admin",
-			address:  "127.0.0.1",
-			port:     "22",
-			authType: "password",
-			password: "password123",
-			sudoMode: "auto",
+			isEdit:     false,
+			skipVerify: true,
+			alias:      "server1",
+			user:       "admin",
+			address:    "127.0.0.1",
+			port:       "22",
+			authType:   "password",
+			password:   "password123",
+			sudoMode:   "auto",
 		},
 	}
 
@@ -307,11 +308,12 @@ func TestUpdateForm_CtrlS_Invalid(t *testing.T) {
 		repository: repository,
 		state:      viewForm,
 		formState: &nodeFormState{
-			isEdit:   false,
-			user:     "", // 无效：用户名为空
-			address:  "127.0.0.1",
-			port:     "22",
-			authType: "password",
+			isEdit:     false,
+			skipVerify: true,
+			user:       "", // 无效：用户名为空
+			address:    "127.0.0.1",
+			port:       "22",
+			authType:   "password",
 		},
 	}
 
@@ -338,7 +340,7 @@ func TestSaveForm_MergesUnrelatedConcurrentChange(t *testing.T) {
 	}
 	repository := newTestRepository(t, cfg)
 	state := &nodeFormState{
-		revision: repository.Revision(),
+		skipVerify: true, revision: repository.Revision(),
 		user:     "admin",
 		address:  "127.0.0.1",
 		port:     "22",

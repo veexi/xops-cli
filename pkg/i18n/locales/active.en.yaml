@@ -316,7 +316,7 @@ inventory_tags_short:
 inventory_load_short:
   other: "Import hosts and credentials from CSV and verify"
 inventory_load_long:
-  other: "Import hosts, usernames, and passwords from a CSV file and save them to the configuration.\nSupported headers: host, port, alias, user, password, key, keypass\nEstablishes SSH connections to verify credentials."
+  other: "Import hosts, usernames and credentials from CSV. By default, save only nodes that pass SSH verification; failed rows are reported as not saved and existing configuration is left unchanged. Supported headers: host, port, alias, user, password, key, keypass. Use --skip-verify to save without checking, or --save-on-verify-failure to check but save even on failure. These options are mutually exclusive."
 inventory_tag_add_short:
   other: "Add nodes to a tag group"
 inventory_tag_remove_short:
@@ -1049,3 +1049,51 @@ credential_migrate_restart:
 
 credential_save_unavailable:
   other: "Automatic credential saving is unavailable; continuing without saving credentials"
+
+inventory_add_long:
+  other: "Add one node. By default, verify SSH authentication before saving; if verification fails, report the failure and ask whether to save anyway (default: no). Use --skip-verify to save without verification."
+
+flag_skip_verify:
+  other: "Skip SSH verification and save directly"
+
+flag_save_on_verify_failure:
+  other: "Verify SSH but save even if verification fails; still report failures"
+
+inventory_verify_not_saved:
+  other: "[{{.Node}}] verification failed; NOT saved (existing configuration unchanged): {{.Error}}"
+
+inventory_verify_failed_saved:
+  other: "[{{.Node}}] verification failed; saved because --save-on-verify-failure was specified: {{.Error}}"
+
+inventory_verified_saved:
+  other: "[{{.Node}}] SSH verification passed; saved"
+
+inventory_saved_unverified:
+  other: "[{{.Node}}] verification skipped; saved without verification"
+
+inventory_not_saved:
+  other: "[{{.Node}}] NOT saved: {{.Error}}"
+
+inventory_confirm_save_unverified:
+  other: "Save this node even though verification failed?"
+
+inventory_save_declined:
+  other: "Node not saved"
+
+tui_status_verifying:
+  other: "Verifying SSH authentication; no node has been saved yet…"
+
+tui_form_verification:
+  other: "Verify before saving"
+
+tui_form_verification_help:
+  other: "Default: verify first; ask before saving a failed connection"
+
+tui_verify_default:
+  other: "Verify (default)"
+
+tui_verify_skip:
+  other: "Skip verification and save"
+
+inventory_save_incomplete:
+  other: "[{{.Node}}] save reported an error after applying changes; inspect configuration before retrying: {{.Error}}"

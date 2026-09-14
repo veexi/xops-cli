@@ -8,6 +8,16 @@ xops ssh -J bastion.example.com deploy@192.0.2.10
 
 A single-label jump host must already exist as a node or alias. Explicit users on the same host keep separate credentials.
 
+## Automatic node saving
+
+When SSH, SFTP, SCP, or exec first connects to a new node, XOps prepares its connection details in memory. It saves the node, host, and identity only after the SSH handshake and authentication succeed. A timeout, refused connection, authentication failure, or cancellation before authentication creates no saved configuration. Saving another node cannot accidentally publish an unauthenticated pending node.
+
+The save happens before opening a shell, executing a command, or starting a file transfer, so a later operation failure does not remove an authenticated node. Existing nodes remain saved after connection failures. Explicit additions and imports also verify by default and support `--skip-verify`; a failed `host add` asks whether to save, while imports support `--save-on-verify-failure`. `--remember never` only disables automatic saving of password-like secrets; successfully authenticated node details are still saved.
+
+For example, if `xops ssh root@192.0.2.10` tries the default port 22 and fails, it leaves no `:22` node. If `xops ssh root@192.0.2.10:2222` then authenticates successfully, only the `:2222` node is saved, and a later command that omits the port can resolve to it. If multiple ports for the same host are genuinely saved, specify the port or a unique alias. Invalid nodes left by older versions must be removed manually.
+
+If saving the node fails, XOps reports the error and closes the authenticated SSH connection before exposing it to the caller. If the configuration replacement was applied but syncing its directory failed, XOps does not automatically roll it back. Concurrent configuration changes are never overwritten.
+
 ## Privilege escalation
 
 ```bash

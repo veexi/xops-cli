@@ -479,6 +479,9 @@ func (c *Connector) initializeConnection(ctx context.Context, planNode connectio
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial and handshake: %w", err)
 	}
+	if err := c.confirmAuthenticatedConnection(ctx, nodeName, rootConn); err != nil {
+		return nil, err
+	}
 
 	// 认证并连接成功后，检查我们是否通过 "auto" 下的终端交互获取到了新凭证（密码或密钥密码）。
 	oldAuthToken := cfg.AuthUpdateToken
@@ -1279,6 +1282,23 @@ func appendKnownHost(knownHostsFile, hostname string, key ssh.PublicKey) (err er
 type PooledClient struct {
 	SSHClient *ssh.Client
 	RootConn  net.Conn
+}
+
+// A confirmation failure must close the authenticated but unpublished client.
+func (c *Connector) confirmAuthenticatedConnection(ctx context.Context, nodeID string, root net.Conn) (err error) {
+	defer func() {
+		if err != nil {
+			if closeErr := root.Close(); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("close unpublished SSH connection: %w", closeErr))
+			}
+		}
+	}()
+	if confirmer, ok := c.provider.(ConnectionConfirmer); ok {
+		if err := confirmer.ConfirmConnection(ctx, nodeID); err != nil {
+			return fmt.Errorf("confirm authenticated node %q: %w", nodeID, err)
+		}
+	}
+	return nil
 }
 
 func (c *Connector) syncConnectionAfterRecording(node string, cfg *ClientConfig, token string, updated, failed bool, originalKeyPath string, root net.Conn) error {

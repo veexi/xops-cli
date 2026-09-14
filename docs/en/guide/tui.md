@@ -22,6 +22,10 @@ A save failure retains the connection, and a persistence warning remains visible
 
 ## Common actions
 
+The new-node form selects verification by default. On submission, it verifies SSH authentication before saving. If verification fails, the TUI reports the reason and asks whether to save anyway. Press `y` to save; Enter, `n`, or Esc leaves the node unsaved and returns to the form for correction. Ctrl+C during verification cancels the operation.
+
+For an offline addition, explicitly select **Skip verification and save** in the **Verify before saving** field. This skips only the connection check; configuration and credential-store validation still run. Editing an existing node keeps its existing save behavior.
+
 | Key | Action |
 | --- | --- |
 | `Enter` | Open SSH for the current node |

@@ -11,6 +11,35 @@ xops host import hosts.csv --tag web
 
 See `xops host import --help` and repository examples for CSV format and options. `inventory` remains a compatibility alias for `host`; prefer `host` in new scripts.
 
+## Verification policy for imports
+
+By default, each CSV row is used to verify SSH authentication before its node and credentials are saved. A failed row reports the node ID, the failure, and that it was not saved. If the row targets an existing node, failed verification leaves its configuration and credentials unchanged.
+
+Repeated rows for the same node are verified and saved in CSV order. Aliases accumulate, and a later successfully saved row can update the credentials. Different nodes are still processed concurrently. This ordering applies to all three verification modes, and results are always printed in CSV order.
+
+IPv6 imports remain compatible with node IDs created by older versions without brackets, such as `root@2001:db8::1:22`. A match preserves and updates the existing node ID. Newly created IPv6 node IDs use brackets, such as `root@[2001:db8::1]:22`.
+
+```bash
+# Default: save only nodes that pass verification
+xops host import hosts.csv
+# Make no SSH connections and directly save all valid rows
+xops host import hosts.csv --skip-verify
+# Verify each row, but save it even if verification fails
+xops host import hosts.csv --save-on-verify-failure
+```
+
+The two options are mutually exclusive. They also apply to `host load`, `inventory import`, and the legacy `loadHost` command. A verification failure returns a nonzero exit status, including when `--save-on-verify-failure` is used. Cancellation never forces a save. Skipping verification only skips the connection check; configuration and credential-store validation still run.
+
+## Adding one node
+
+`host add` verifies the connection by default. If verification succeeds, it saves the node. If verification fails, it reports the reason and asks `Save this node even though verification failed? [y/N]`. Only an explicit `y` or `yes` saves the node; Enter, rejection, or an unreadable response leaves it unsaved. For unattended offline addition, specify:
+
+```bash
+xops host add --address 192.0.2.10 --user deploy --skip-verify
+```
+
+With `--skip-verify`, a node can be saved without a password, private key, or identity template and configured with credentials later. The TUI provides the same policy for adding a node; see the [terminal management interface](./tui).
+
 An explicit different user reuses the Host with a separate Identity/Node, without inheriting another user's credentials:
 
 ```bash

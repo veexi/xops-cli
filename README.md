@@ -73,6 +73,8 @@ xops init --skip-ssh-import
 
 新安装默认将验证成功的密码和私钥口令保存在内置离线加密库中，首次保存时自动创建凭据库和密钥文件。连接时加上 `--remember never` 可关闭本次自动保存；在配置中设置 `credential.remember_prompted: never` 可全局关闭。
 
+通过 SSH、SFTP、SCP 或 exec 首次连接的新节点，仅在 SSH 握手和身份认证成功后自动保存。连接超时、拒绝连接或认证失败不会新增节点；认证成功后即保存，无须等待 Shell 或远程命令成功。已有节点不会因连接失败被删除。显式添加或导入可使用 `--skip-verify` 离线保存。`--remember` 控制凭据机密的保存，不影响认证成功后的节点信息保存。
+
 存储选择与备份方法见[凭据存储](docs/guide/credentials.md)，旧配置升级和更换存储位置见[凭据迁移](docs/guide/migration.md)。
 
 #### 2. 主机与资产管理
@@ -90,6 +92,8 @@ xops host tags
 ```
 
 `inventory` 仍可作为 `host` 的兼容别名，`host load` 仍可作为 `host import` 的兼容别名；新脚本应使用上面的规范命令。
+
+导入默认只保存 SSH 验证通过的节点，失败行会明确标记“未保存”；`--skip-verify` 跳过验证直接保存，`--save-on-verify-failure` 验证失败也保存，两者互斥。`host add` 和 TUI 添加节点默认先验证，失败后询问是否保存（默认否）；CLI 使用 `--skip-verify`、TUI 使用表单中的“跳过验证直接保存”选项进行离线添加。
 
 #### 3. SSH 连接与 TUI
 

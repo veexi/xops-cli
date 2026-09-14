@@ -1017,7 +1017,7 @@ func (o *ScpOptions) getOrCreateNodeForPath(ctx context.Context, provider config
 	}
 
 	shouldRemember := cmdutils.EffectiveRememberPolicy(o.Remember, provider.Snapshot()) == cmdutils.RememberPolicyAlways
-	res, err := repo.EnsureNodeContext(ctx, config.EnsureNodeOptions{
+	res, err := repo.PrepareNodeContext(ctx, config.EnsureNodeOptions{
 		Target:       target,
 		Password:     "",
 		IdentityFile: o.IdentityFile,

@@ -91,15 +91,14 @@ func testSSHExplicitUserReusesHost(t *testing.T, ctx context.Context) {
 	if len(snap.Hosts.Keys()) != 1 {
 		t.Errorf("expected host to be reused (1 host), got %d", len(snap.Hosts.Keys()))
 	}
-	node, ok := snap.Nodes.Get(nodeID)
-	if !ok || node.ProxyJump != "jump-01" {
+	node, _, ident, resolveErr := repo.Resolve(nodeID)
+	if resolveErr != nil || node.ProxyJump != "jump-01" {
 		t.Errorf("expected inherited ProxyJump 'jump-01', got %+v", node)
 	}
 	if len(node.Alias) != 0 || len(node.Tags) != 0 {
 		t.Errorf("new node must not inherit alias/tags, got %+v", node)
 	}
-	ident, ok := snap.Identities.Get(node.IdentityRef)
-	if !ok || ident.Password != "" {
+	if ident.User != "test" || ident.Password != "" {
 		t.Errorf("new identity must exist and not inherit secretPassword, got %+v", ident)
 	}
 }
@@ -274,8 +273,12 @@ func TestCommands_Consistency_ExplicitPort(t *testing.T) {
 		t.Errorf("got nodeID=%q, want test@10.238.221.181:2222", nodeID)
 	}
 	snap := repo.Snapshot()
-	if len(snap.Hosts.Keys()) != 2 {
-		t.Errorf("expected 2 hosts (22 and 2222), got %d", len(snap.Hosts.Keys()))
+	if len(snap.Hosts.Keys()) != 1 {
+		t.Errorf("pending port must not create a saved host, got %d hosts", len(snap.Hosts.Keys()))
+	}
+	_, host, _, err := repo.Resolve(nodeID)
+	if err != nil || host.Port != 2222 {
+		t.Fatalf("pending connection port = %d, error = %v", host.Port, err)
 	}
 }
 
@@ -336,9 +339,8 @@ func TestCommands_Exec_SudoAndSuPwd(t *testing.T) {
 		t.Fatalf("unexpected tasks: %+v", tasks)
 	}
 
-	snap := repo.Snapshot()
-	node, ok := snap.Nodes.Get("test@10.238.221.181:22")
-	if !ok {
+	node, _, _, resolveErr := repo.Resolve("test@10.238.221.181:22")
+	if resolveErr != nil {
 		t.Fatalf("node test@10.238.221.181:22 not found in snapshot")
 	}
 	if node.SudoMode != models.SudoModeSudo {
@@ -681,9 +683,8 @@ func TestCommands_ExistingNode_ProxyJumpChainUpdate(t *testing.T) {
 		if !mutated {
 			t.Fatalf("expected node to be updated (mutated=true)")
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node not found: %s", nodeID)
 		}
 		expectedPJ := config.OpenSSHNodePrefix + "10.0.0.1:22," + config.OpenSSHNodePrefix + "10.0.0.2:22"
@@ -703,9 +704,8 @@ func TestCommands_ExistingNode_ProxyJumpChainUpdate(t *testing.T) {
 		if !updated {
 			t.Fatalf("expected existing node to be updated with new ProxyJump")
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node not found: %s", nodeID)
 		}
 		expectedPJ := config.OpenSSHNodePrefix + "10.0.0.1:22," + config.OpenSSHNodePrefix + "10.0.0.2:22"
@@ -726,9 +726,8 @@ func TestCommands_ExistingNode_ProxyJumpChainUpdate(t *testing.T) {
 		if len(tasks) != 1 {
 			t.Fatalf("expected 1 task, got %d", len(tasks))
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(tasks[0].nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(tasks[0].nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node not found: %s", tasks[0].nodeID)
 		}
 		expectedPJ := config.OpenSSHNodePrefix + "10.0.0.1:22," + config.OpenSSHNodePrefix + "10.0.0.2:22"
@@ -867,9 +866,8 @@ func TestCommands_Consistency_SavedAliasWithPortProxyJump(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveNode failed: %v", err)
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node %s not found", nodeID)
 		}
 		if node.ProxyJump != "root@10.0.0.5:22" {
@@ -889,9 +887,8 @@ func TestCommands_Consistency_SavedAliasWithPortProxyJump(t *testing.T) {
 		if len(tasks) != 1 {
 			t.Fatalf("expected 1 task, got %d", len(tasks))
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(tasks[0].nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(tasks[0].nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node %s not found", tasks[0].nodeID)
 		}
 		if node.ProxyJump != "root@10.0.0.5:22" {
@@ -938,9 +935,8 @@ func TestCommands_SSH_ChangeUserPreservesPortAndProxyJump(t *testing.T) {
 	if !created || nodeID != "test@10.0.0.5:2222" {
 		t.Errorf("got nodeID=%q, created=%v, want test@10.0.0.5:2222, true", nodeID, created)
 	}
-	snap := repo.Snapshot()
-	node, ok := snap.Nodes.Get(nodeID)
-	if !ok {
+	node, _, _, resolveErr := repo.Resolve(nodeID)
+	if resolveErr != nil {
 		t.Fatalf("node %s not found", nodeID)
 	}
 	if node.ProxyJump != "upstream" {
@@ -963,9 +959,8 @@ func TestCommands_SFTP_ChangeUserPreservesPortAndProxyJump(t *testing.T) {
 	if !created || nodeID != "test@10.0.0.5:2222" {
 		t.Errorf("got nodeID=%q, created=%v, want test@10.0.0.5:2222, true", nodeID, created)
 	}
-	snap := repo.Snapshot()
-	node, ok := snap.Nodes.Get(nodeID)
-	if !ok {
+	node, _, _, resolveErr := repo.Resolve(nodeID)
+	if resolveErr != nil {
 		t.Fatalf("node %s not found", nodeID)
 	}
 	if node.ProxyJump != "upstream" {
@@ -984,9 +979,8 @@ func TestCommands_SCP_ChangeUserPreservesPortAndProxyJump(t *testing.T) {
 	if !created || nodeID != "test@10.0.0.5:2222" {
 		t.Errorf("got nodeID=%q, created=%v, want test@10.0.0.5:2222, true", nodeID, created)
 	}
-	snap := repo.Snapshot()
-	node, ok := snap.Nodes.Get(nodeID)
-	if !ok {
+	node, _, _, resolveErr := repo.Resolve(nodeID)
+	if resolveErr != nil {
 		t.Fatalf("node %s not found", nodeID)
 	}
 	if node.ProxyJump != "upstream" {
@@ -1009,9 +1003,8 @@ func TestCommands_Exec_ChangeUserPreservesPortAndProxyJump(t *testing.T) {
 	if tasks[0].nodeID != "test@10.0.0.5:2222" {
 		t.Errorf("got task nodeID=%q, want test@10.0.0.5:2222", tasks[0].nodeID)
 	}
-	snap := repo.Snapshot()
-	node, ok := snap.Nodes.Get(tasks[0].nodeID)
-	if !ok {
+	node, _, _, resolveErr := repo.Resolve(tasks[0].nodeID)
+	if resolveErr != nil {
 		t.Fatalf("node %s not found", tasks[0].nodeID)
 	}
 	if node.ProxyJump != "upstream" {
@@ -1034,9 +1027,8 @@ func TestCommands_JumpAliasUserOverridePreservesPort(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveNode failed: %v", err)
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node %s not found", nodeID)
 		}
 		expectedJump := config.OpenSSHNodePrefix + "another@10.0.0.5:2222"
@@ -1057,9 +1049,8 @@ func TestCommands_JumpAliasUserOverridePreservesPort(t *testing.T) {
 		if len(tasks) != 1 {
 			t.Fatalf("expected 1 task, got %d", len(tasks))
 		}
-		snap := repo.Snapshot()
-		node, ok := snap.Nodes.Get(tasks[0].nodeID)
-		if !ok {
+		node, _, _, resolveErr := repo.Resolve(tasks[0].nodeID)
+		if resolveErr != nil {
 			t.Fatalf("node %s not found", tasks[0].nodeID)
 		}
 		expectedJump := config.OpenSSHNodePrefix + "another@10.0.0.5:2222"
@@ -1113,9 +1104,8 @@ Host bastion
 	if err != nil {
 		t.Fatalf("resolveNode failed: %v", err)
 	}
-	snap := repo.Snapshot()
-	node, ok := snap.Nodes.Get(nodeID)
-	if !ok {
+	node, _, _, resolveErr := repo.Resolve(nodeID)
+	if resolveErr != nil {
 		t.Fatalf("node %s not found", nodeID)
 	}
 	expectedJump := config.OpenSSHNodePrefix + "bastion"

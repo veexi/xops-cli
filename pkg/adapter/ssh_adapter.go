@@ -173,6 +173,17 @@ func (a *SSHAdapter) getSessionOverride(nodeID string) (SessionAuth, bool) {
 	return SessionAuth{}, false
 }
 
+// ConfirmConnection publishes a prepared node before credentials are recorded.
+// Providers without pending connections require no additional mutation.
+func (a *SSHAdapter) ConfirmConnection(ctx context.Context, nodeID string) error {
+	if provider, ok := a.cfgProvider.(interface {
+		ConfirmNodeContext(context.Context, string) error
+	}); ok {
+		return provider.ConfirmNodeContext(ctx, nodeID)
+	}
+	return nil
+}
+
 // GetConfig 获取底层 SSH 客户端需要的配置
 func (a *SSHAdapter) GetConfig(nodeID string) (*ssh.ClientConfig, error) {
 	if a.cfgProvider == nil {

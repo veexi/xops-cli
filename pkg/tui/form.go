@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/wentf9/xops-cli/pkg/adapter"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/credential"
 	"github.com/wentf9/xops-cli/pkg/i18n"
@@ -34,6 +35,7 @@ type nodeFormState struct {
 	passphrase string
 	sudoMode   string
 	tags       string
+	skipVerify bool
 
 	// 凭据状态与操作
 	passwordAction          string // "keep", "replace", "delete"
@@ -205,6 +207,13 @@ func (m *Model) initForm(nodeID string) (Model, tea.Cmd) {
 			Validate(m.validateTags),
 	)
 
+	if !state.isEdit {
+		fields = append(fields, huh.NewSelect[bool]().
+			Title(i18n.T("tui_form_verification")).
+			Description(i18n.T("tui_form_verification_help")).
+			Options(huh.NewOption(i18n.T("tui_verify_default"), false), huh.NewOption(i18n.T("tui_verify_skip"), true)).
+			Value(&state.skipVerify).Inline(true))
+	}
 	m.form = huh.NewForm(
 		huh.NewGroup(fields...),
 	).WithTheme(huh.ThemeCharm()).
@@ -366,6 +375,9 @@ func (m *Model) updateForm(msg tea.Msg) (Model, tea.Cmd) {
 	if m.mutationPending {
 		return *m, nil
 	}
+	if m.formVerifyErr != nil {
+		return m.updateVerificationConfirmation(msg)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		if m.form != nil {
@@ -488,6 +500,34 @@ func (m *Model) saveFormCmd() tea.Cmd {
 			}
 			return m.syncCredentialsToStore(ctx, nodeID, mutation.AuthVersion, s, actions)
 		}
+	}
+	if !s.isEdit && !s.skipVerify {
+		checkIdentity := identity
+		checkIdentity.AuthType = s.authType
+		if s.authType == "password" && s.password != "" {
+			checkIdentity.Password = s.password
+			checkIdentity.LoginPasswordRef = nil
+		}
+		if s.authType == "key" {
+			checkIdentity.KeyPath, checkIdentity.Passphrase = absKeyPath, s.passphrase
+			checkIdentity.PassphraseRef = nil
+		}
+		preview, err := repository.PreviewConnection(nodeID, node, host, checkIdentity)
+		if err != nil {
+			m.status = errorStyle.Render(err.Error())
+			return nil
+		}
+		verify := m.connectionConfig.verifyConnection
+		if verify == nil {
+			verify = adapter.VerifyConnection
+		}
+		m.formVerifiedSave, m.formVerifyNodeID = run, nodeID
+		registry := m.connectionConfig.credentialRegistry
+		cmd := m.beginConfigurationMutation(configurationMutationVerify, nodeID, 0, func(ctx context.Context) error {
+			return verify(ctx, preview, nodeID, registry)
+		})
+		m.status = i18n.T("tui_status_verifying")
+		return cmd
 	}
 	return m.beginConfigurationMutation(configurationMutationForm, nodeID, 0, run)
 }

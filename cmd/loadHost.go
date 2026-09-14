@@ -10,7 +10,7 @@ func newCmdLoadHost() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:        "loadHost [csv_file]",
 		Short:      i18n.T("loadhost_short"),
-		Long:       i18n.T("loadhost_long"),
+		Long:       i18n.T("inventory_load_long"),
 		Args:       cobra.MaximumNArgs(1),
 		RunE:       host.RunInventoryLoad,
 		Hidden:     true,
@@ -19,6 +19,7 @@ func newCmdLoadHost() *cobra.Command {
 
 	cmd.Flags().StringVarP(&host.TemplateFile, "template", "T", "", i18n.T("flag_inv_template"))
 	cmd.Flags().StringVarP(&host.Tag, "tag", "t", "", i18n.T("flag_inv_load_tag"))
+	host.RegisterImportVerificationFlags(cmd)
 
 	return cmd
 }

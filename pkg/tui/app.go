@@ -60,6 +60,9 @@ type Model struct {
 	lifecycleCancel    context.CancelFunc
 	statusGeneration   uint64
 	formConflict       bool
+	formVerifyErr      error
+	formVerifyNodeID   string
+	formVerifiedSave   func(context.Context) error
 	credentialService  *credential.Service
 }
 
@@ -71,6 +74,7 @@ const (
 	configurationMutationForm configurationMutationKind = iota
 	configurationMutationTags
 	configurationMutationDelete
+	configurationMutationVerify
 )
 
 type configurationMutationMsg struct {
@@ -153,6 +157,7 @@ func (m *configurationMutation) close() error {
 type ModelOption func(*modelConfig)
 
 type modelConfig struct {
+	verifyConnection       func(context.Context, *config.Provider, string, adapter.CredentialResolver) error
 	rememberPolicy         string
 	persistenceUnavailable bool
 	vaultControl           func(context.Context, bool) error
@@ -311,6 +316,9 @@ func (m *Model) handleConfigurationMutation(msg configurationMutationMsg) (tea.M
 	m.mutation.observe()
 	m.mutation = nil
 	m.mutationPending = false
+	if msg.kind == configurationMutationVerify {
+		return m.handleFormVerification(msg)
+	}
 	if msg.err != nil {
 		var durabilityErr *config.DurabilityError
 		var cleanupErr *credential.CleanupError
@@ -481,7 +489,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		// 只有在非删除确认状态下，才自动清除状态
-		if msg.generation == m.statusGeneration && !m.deletePending && !m.mutationPending {
+		if msg.generation == m.statusGeneration && m.statusCanExpire() {
 			m.status = ""
 			if m.state == viewList {
 				m.refreshList()
@@ -495,7 +503,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// If status was just set, start a timer to clear it
 	// 但如果是删除确认状态，我们不希望它自动消失
-	if m.status != "" && !m.deletePending && !m.mutationPending {
+	if m.status != "" && m.statusCanExpire() {
 		return m, tea.Batch(cmd, tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
 			return tickMsg{generation: m.statusGeneration}
 		}))
@@ -625,4 +633,9 @@ func tuiRememberPolicy(snapshot *config.Configuration, cfg modelConfig) string {
 		return "ask"
 	}
 	return policy
+}
+
+// Confirmation prompts remain visible until the user explicitly answers.
+func (m *Model) statusCanExpire() bool {
+	return !m.deletePending && !m.mutationPending && m.formVerifyErr == nil
 }

@@ -41,18 +41,15 @@ func TestV2ImportPersistsCredentialReferences(t *testing.T) {
 			// allow the complete Put/Get/cleanup/verification sequence.
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			err = hostcmd.ExecuteLoadHostContext(ctx, []utils.HostInfo{addr})
-			if err == nil || !strings.Contains(err.Error(), "verify failed") {
+			err = hostcmd.ExecuteLoadHostWithOptions(ctx, []utils.HostInfo{addr}, hostcmd.ImportOptions{SaveOnVerifyFailure: true})
+			if err == nil || !strings.Contains(err.Error(), "verify SSH connection") {
 				t.Fatalf("import did not reach connection verification: %v", err)
 			}
 			_, repo, cfg, err := utils.GetConfigStore()
 			if err != nil {
 				t.Fatal(err)
 			}
-			nodeID := "node"
-			if kind == "passphrase" {
-				nodeID = fmt.Sprintf("imported@%s:%d", addr.Host, port)
-			}
+			nodeID := fmt.Sprintf("imported@%s:%d", addr.Host, port)
 			snapshot, err := repo.ResolveConnection(nodeID)
 			if err != nil {
 				t.Fatal(err)
@@ -97,7 +94,7 @@ func TestV2ImportFailuresPreserveConfiguration(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("TEST_HELPER_ERROR_CODE", "locked")
-			err = hostcmd.ExecuteLoadHostContext(t.Context(), []utils.HostInfo{{Host: host, User: "imported", Password: "csv-secret", Alias: "new-alias"}})
+			err = hostcmd.ExecuteLoadHostWithOptions(t.Context(), []utils.HostInfo{{Host: host, User: "imported", Password: "csv-secret", Alias: "new-alias"}}, hostcmd.ImportOptions{SkipVerify: true})
 			if !errors.Is(err, credential.ErrCredentialStoreLocked) {
 				t.Fatalf("import lost backend error: %v", err)
 			}
@@ -121,7 +118,7 @@ func TestImportVerificationResolvesExistingRef(t *testing.T) {
 func TestV2ImportNoneRejectsSecretBeforeCreation(t *testing.T) {
 	setupTestEnvironment(t)
 	configureSessionOnlyCredential(t)
-	err := hostcmd.ExecuteLoadHostContext(t.Context(), []utils.HostInfo{{Host: "127.0.0.2", User: "imported", Password: "csv-secret"}})
+	err := hostcmd.ExecuteLoadHostWithOptions(t.Context(), []utils.HostInfo{{Host: "127.0.0.2", User: "imported", Password: "csv-secret"}}, hostcmd.ImportOptions{SkipVerify: true})
 	if !errors.Is(err, credential.ErrCredentialStoreReadOnly) {
 		t.Fatalf("none import: %v", err)
 	}

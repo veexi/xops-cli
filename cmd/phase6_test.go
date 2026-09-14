@@ -63,7 +63,7 @@ func TestInventoryCompatibilityFlagsUseCredentialStore(t *testing.T) {
 	}{
 		{"identity add", NewCmdIdentity, []string{"add", "--name", "new", "--user", "admin", "--password", "fixture-secret"}, "new", ""},
 		{"identity edit", NewCmdIdentity, []string{"edit", "admin", "--password", "fixture-secret"}, "admin", ""},
-		{"host add", hostcmd.NewCmdInventoryAdd, []string{"--address", "127.0.0.2", "--user", "admin", "--password", "fixture-secret"}, "", "admin@127.0.0.2:22"},
+		{"host add", hostcmd.NewCmdInventoryAdd, []string{"--skip-verify", "--address", "127.0.0.2", "--user", "admin", "--password", "fixture-secret"}, "", "admin@127.0.0.2:22"},
 		{"host edit", hostcmd.NewCmdInventoryEdit, []string{"node", "--password", "fixture-secret"}, "", "node"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
