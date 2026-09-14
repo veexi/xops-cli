@@ -4,7 +4,7 @@
 
 Download the binary for your OS and architecture from [GitHub Releases](https://github.com/wentf9/xops-cli/releases). Put `xops` on PATH on Linux/macOS. On Windows, add the directory containing `xops.exe` to PATH or run `./xops.exe` in PowerShell.
 
-Building from source requires **Go 1.26+**:
+Building from source requires **Go 1.26+** (the Makefile natively supports Linux, macOS, and Windows CMD / PowerShell / Git Bash environments):
 
 ```bash
 git clone https://github.com/wentf9/xops-cli.git
@@ -13,7 +13,7 @@ make build
 ./bin/xops --help
 ```
 
-Use `make windows` to cross-build `bin/xops.exe`.
+On Windows, `make build` automatically produces `bin/xops.exe`. You can also cross-build Windows binaries on any platform with `make windows`.
 
 ## Initialize configuration
 

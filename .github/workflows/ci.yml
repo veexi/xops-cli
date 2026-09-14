@@ -95,6 +95,22 @@ jobs:
       - name: Build all packages
         run: go build ./...
 
+      - name: Run native Windows Make without sh.exe
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $makeExecutable = (Get-Command make -ErrorAction Stop).Source
+          $env:PATH = (($env:PATH -split ';') | Where-Object {
+            $_ -and -not (Test-Path (Join-Path $_ 'sh.exe'))
+          }) -join ';'
+          Remove-Item Env:SHELL, Env:MAKESHELL -ErrorAction SilentlyContinue
+          & $makeExecutable help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $makeExecutable 'DATE=2026-09-14 12:00:00'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $makeExecutable clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run Windows tests
         run: go test -race -shuffle=on -count=1 ./...
 

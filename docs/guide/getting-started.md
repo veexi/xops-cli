@@ -4,7 +4,7 @@
 
 从 [GitHub Releases](https://github.com/wentf9/xops-cli/releases) 下载对应操作系统与架构的程序。Linux/macOS 将 `xops` 放入 PATH；Windows 将 `xops.exe` 所在目录加入 PATH，也可在 PowerShell 中使用 `./xops.exe`。
 
-源码构建需要 **Go 1.26+**：
+源码构建需要 **Go 1.26+**（Makefile 原生支持 Linux、macOS 与 Windows CMD / PowerShell / Git Bash 环境）：
 
 ```bash
 git clone https://github.com/wentf9/xops-cli.git
@@ -13,7 +13,7 @@ make build
 ./bin/xops --help
 ```
 
-Windows 交叉构建使用 `make windows`，产物为 `bin/xops.exe`。
+在 Windows 系统上，`make build` 会自动生成 `bin/xops.exe`；亦可在任意平台上通过 `make windows` 交叉编译 Windows 产物。
 
 ## 初始化配置
 
