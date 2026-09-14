@@ -12,6 +12,10 @@ BIN_DIR=bin
 # ==============================================================================
 # 跨平台环境与 Shell 适配 (Windows / Linux / macOS)
 # ==============================================================================
+# Apple's Make uses the parent's PATH to spawn bare recipe commands. On POSIX
+# shells, exec forces lookup through the shell with our exported PATH instead.
+# Native Windows shells must keep plain tool invocations.
+RUN_TOOL :=
 ifeq ($(wildcard /dev/null),/dev/null)
     DEVNULL := /dev/null
 else
@@ -32,6 +36,7 @@ ifeq ($(OS),Windows_NT)
     endif
     ifeq ($(POSIX_SHELL),yes)
         # Windows + POSIX Shell (Git Bash / MSYS2 / Cygwin)
+        RUN_TOOL := exec
         # cygpath converts drive-letter paths to the shell's mount layout.
         GOPATH_BIN := $(shell if command -v cygpath >/dev/null 2>&1; then cygpath -u "$$(go env GOPATH)/bin"; else printf '%s/bin' "$$(go env GOPATH)"; fi)
         ifneq ($(shell test -d "$(GOPATH_BIN)" && echo yes),)
@@ -60,9 +65,10 @@ ifeq ($(OS),Windows_NT)
     endif
 else
     # Linux / macOS 环境 (POSIX)
+    RUN_TOOL := exec
     SHELL_EXT :=
     GOPATH_BIN := $(shell go env GOPATH 2>$(DEVNULL))/bin
-    ifneq ($(wildcard $(GOPATH_BIN)),)
+    ifneq ($(shell test -d "$(GOPATH_BIN)" && echo yes),)
         export PATH := $(GOPATH_BIN):$(PATH)
     endif
 
@@ -103,7 +109,7 @@ build: build-cli
 build-cli: export CGO_ENABLED := 0
 build-cli:
 	@echo "Building CLI ($(VERSION)) for current OS..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)$(SHELL_EXT) ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)$(SHELL_EXT) ./cmd/cli
 
 # ==============================================================================
 # 交叉编译目标 (Cross Compilation)
@@ -115,7 +121,7 @@ windows: export GOARCH := amd64
 windows: export CGO_ENABLED := 0
 windows:
 	@echo "Compiling for Windows (amd64)..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME).exe ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME).exe ./cmd/cli
 
 # 编译 Windows 版本 (ARM64)
 windows-arm64: export GOOS := windows
@@ -123,7 +129,7 @@ windows-arm64: export GOARCH := arm64
 windows-arm64: export CGO_ENABLED := 0
 windows-arm64:
 	@echo "Compiling for Windows (arm64)..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-arm64.exe ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-arm64.exe ./cmd/cli
 
 # 编译 Linux 版本 (64位)
 linux: export GOOS := linux
@@ -131,7 +137,7 @@ linux: export GOARCH := amd64
 linux: export CGO_ENABLED := 0
 linux:
 	@echo "Compiling for Linux (amd64)..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/cli
 
 # 编译 Linux 版本 (aarch64位)
 linux-arm64: export GOOS := linux
@@ -139,7 +145,7 @@ linux-arm64: export GOARCH := arm64
 linux-arm64: export CGO_ENABLED := 0
 linux-arm64:
 	@echo "Compiling for Linux (arm64)..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-linux-aarch64 ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-linux-aarch64 ./cmd/cli
 
 # 编译 macOS 版本 (Intel & Apple Silicon)
 darwin: darwin-amd64 darwin-arm64
@@ -149,14 +155,14 @@ darwin-amd64: export GOARCH := amd64
 darwin-amd64: export CGO_ENABLED := 0
 darwin-amd64:
 	@echo "Compiling for macOS (amd64)..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/cli
 
 darwin-arm64: export GOOS := darwin
 darwin-arm64: export GOARCH := arm64
 darwin-arm64: export CGO_ENABLED := 0
 darwin-arm64:
 	@echo "Compiling for macOS (arm64)..."
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/cli
+	$(RUN_TOOL) go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/cli
 
 # 编译所有平台
 release: windows windows-arm64 linux linux-arm64 darwin
@@ -167,7 +173,7 @@ release: windows windows-arm64 linux linux-arm64 darwin
 clean:
 	@echo "Cleaning..."
 	@$(RM_CMD)
-	@go clean
+	@$(RUN_TOOL) go clean
 
 # ==============================================================================
 # 测试 (Testing)
@@ -175,42 +181,42 @@ clean:
 
 test:
 	@echo "Running tests..."
-	go test ./... -count=1
+	$(RUN_TOOL) go test ./... -count=1
 
 test-race:
 	@echo "Running tests with race detector..."
-	go test ./... -race -shuffle=on -count=1
+	$(RUN_TOOL) go test ./... -race -shuffle=on -count=1
 
 test-cover:
 	@echo "Running tests with coverage..."
-	go test ./... -covermode=atomic -coverprofile=coverage.out
-	go tool cover -func=coverage.out
+	$(RUN_TOOL) go test ./... -covermode=atomic -coverprofile=coverage.out
+	$(RUN_TOOL) go tool cover -func=coverage.out
 
 lint:
 	@echo "Running golangci-lint..."
-	golangci-lint run ./...
+	$(RUN_TOOL) golangci-lint run ./...
 
 verify:
 	@echo "Verifying build, tests, and lint..."
-	go build ./...
-	go test ./...
-	golangci-lint run ./...
+	$(RUN_TOOL) go build ./...
+	$(RUN_TOOL) go test ./...
+	$(RUN_TOOL) golangci-lint run ./...
 
 ci:
 	@echo "Running CI checks..."
-	go mod tidy
+	$(RUN_TOOL) go mod tidy
 	git diff --exit-code -- go.mod go.sum
-	go build ./...
-	go test -race -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
-	golangci-lint run ./...
+	$(RUN_TOOL) go build ./...
+	$(RUN_TOOL) go test -race -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
+	$(RUN_TOOL) golangci-lint run ./...
 
 bench:
 	@echo "Running benchmarks..."
-	go test ./pkg/utils/concurrent/... -bench=. -benchmem -benchtime=2s -run="^$$" -count=1
+	$(RUN_TOOL) go test ./pkg/utils/concurrent/... -bench=. -benchmem -benchtime=2s -run="^$$" -count=1
 
 stress:
 	@echo "Running stress tests..."
-	go test ./pkg/utils/concurrent/... -race -run="TestStress" -v -count=1
+	$(RUN_TOOL) go test ./pkg/utils/concurrent/... -race -run="TestStress" -v -count=1
 
 # 显示帮助
 help:

@@ -49,12 +49,6 @@ make build
 # 或者手动编译: go build -o xops ./cmd/cli/main.go
 ```
 
-可运行 `make install-skill` 将 Gemini CLI 技能安装到当前用户的 `~/.gemini/skills/xops-agent`，支持含空格的主目录；Windows 原生 Shell 使用 PowerShell 的 `$HOME`。Go 测试不要求安装 Make，缺少 Make 时会跳过相关测试。依赖 POSIX 主机的 Makefile 测试在 Windows 上跳过；原生 CMD 清理命令仍单独验证。
-
-Windows 下会探测 Make 实际使用的 Shell；即使 `SHELL` 显示为 `sh.exe`，回退到 `cmd.exe` 时也会使用原生命令。若旧版出现“此时不应有 -v”或“test 不是内部或外部命令”，可临时运行 `make SHELL=cmd.exe`。中断后若终端输入异常，请关闭该终端并重新打开。
-
-Windows 的 Git Bash/MSYS2/Cygwin 环境使用 POSIX PATH；存在 `cygpath` 时会转换 Go bin 路径。构建元数据支持空格，例如 `make build DATE="2026-09-14 12:00:00"`。
-
 ### 🚀 快速上手
 
 #### 1. 初始化

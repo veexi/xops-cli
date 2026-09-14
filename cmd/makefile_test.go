@@ -292,8 +292,9 @@ func TestMakefile_WindowsPOSIXPath(t *testing.T) {
 			if convert {
 				writeMakefileFixture(t, root, "tools/cygpath", "#!/bin/sh\n[ \"$1\" = -u ] && [ \"$2\" = 'C:\\Go Home/bin' ] || exit 1\nprintf '%s\\n' \"$FIXTURE_BIN\"\n")
 			}
-			// Both tools must resolve: one in Go bin and one in the original first PATH entry.
-			writeMakefileFixture(t, root, "probe.mk", "include Makefile\nprobe:\n\t@path-probe\n\t@original-probe\n")
+			// Use the same tool launcher as real recipes: Apple's Make searches
+			// its original PATH when directly spawning a bare command.
+			writeMakefileFixture(t, root, "probe.mk", "include Makefile\nprobe:\n\t@$(RUN_TOOL) path-probe\n\t@$(RUN_TOOL) original-probe\n")
 			t.Setenv("PATH", filepath.Join(root, "tools"))
 			t.Setenv("FIXTURE_BIN", filepath.Join(root, "go home", "bin"))
 			gopath := filepath.Join(root, "go home")
@@ -314,6 +315,47 @@ func TestMakefile_WindowsPOSIXPath(t *testing.T) {
 				t.Fatalf("unexpected PATH probe output: %s", out)
 			}
 		})
+	}
+}
+
+func TestMakefile_LintUsesExportedPOSIXPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires a POSIX host for shell fixtures")
+	}
+	makePath, err := exec.LookPath("make")
+	if err != nil {
+		t.Skip("make command not available in environment")
+	}
+	for _, platform := range []string{"Darwin", "Windows_NT"} {
+		for _, failure := range []bool{false, true} {
+			name := platform + "/success"
+			if failure {
+				name = platform + "/failure"
+			}
+			t.Run(name, func(t *testing.T) {
+				root := makefileFixture(t)
+				writeMakefileFixture(t, root, "tools/go", "#!/bin/sh\nprintf '%s\\n' \"$FIXTURE_GOPATH\"\n")
+				writeMakefileFixture(t, root, "go home/bin/golangci-lint", "#!/bin/sh\n[ \"$1\" = run ] && [ \"$2\" = ./... ] || exit 41\nprintf 'lint-from-go-bin\\n'\nexit \"$FIXTURE_EXIT\"\n")
+				t.Setenv("PATH", filepath.Join(root, "tools"))
+				t.Setenv("FIXTURE_GOPATH", filepath.Join(root, "go home"))
+				t.Setenv("FIXTURE_EXIT", "0")
+				if failure {
+					t.Setenv("FIXTURE_EXIT", "7")
+				}
+				t.Setenv("MAKELEVEL", "1")
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, makePath, "--no-print-directory", "OS="+platform, "SHELL=/bin/sh", "VERSION=test", "COMMIT=test", "DATE=test", "lint")
+				cmd.Dir = root
+				out, err := cmd.CombinedOutput()
+				if (err != nil) != failure || !strings.Contains(string(out), "lint-from-go-bin") {
+					t.Fatalf("lint did not run from exported PATH: %v, output: %s", err, out)
+				}
+				if failure && !strings.Contains(string(out), "Error 7") {
+					t.Fatalf("lint exit status was lost: %s", out)
+				}
+			})
+		}
 	}
 }
 
@@ -359,7 +401,7 @@ esac
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "make", "-n", "OS=Windows_NT",
 		"SHELL="+filepath.Join(root, "sh.exe"), "GOPATH_BIN=",
-		"VERSION=test", "COMMIT=test", "DATE=test", "clean", "build", "install-skill")
+		"VERSION=test", "COMMIT=test", "DATE=test", "clean", "build", "lint", "install-skill")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -368,6 +410,9 @@ esac
 	output := string(out)
 	if strings.Contains(output, "unexpected shell command") {
 		t.Fatalf("executed a POSIX command despite cmd fallback: %s", output)
+	}
+	if strings.Contains(output, "exec go") || strings.Contains(output, "exec golangci-lint") {
+		t.Fatalf("native Windows fallback used the POSIX tool launcher: %s", output)
 	}
 	for _, want := range []string{"rmdir /s /q bin", "del /f /q coverage.out", "bin/xops.exe", "powershell -NoProfile"} {
 		if !strings.Contains(output, want) {
