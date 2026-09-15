@@ -32,11 +32,13 @@ func TestV2ImportPersistsCredentialReferences(t *testing.T) {
 			if kind == "password" {
 				addr.Password = "csv-secret"
 			} else {
-				addr.Host = "127.0.0.2"
 				addr.KeyPath = inventoryTestPrivateKey(t, true)
 				addr.Passphrase = "key-password"
 			}
-			// Verify fails on the closed loopback port, after the import commit.
+			// Use the listener's loopback address for both credential kinds:
+			// macOS may not route 127.0.0.2 without an explicit loopback alias.
+			// Verification fails on the closed port before SaveOnVerifyFailure
+			// commits the import, while the context is still active.
 			// Race-instrumented helper processes each incur an exit delay;
 			// allow the complete Put/Get/cleanup/verification sequence.
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
@@ -44,6 +46,9 @@ func TestV2ImportPersistsCredentialReferences(t *testing.T) {
 			err = hostcmd.ExecuteLoadHostWithOptions(ctx, []utils.HostInfo{addr}, hostcmd.ImportOptions{SaveOnVerifyFailure: true})
 			if err == nil || !strings.Contains(err.Error(), "verify SSH connection") {
 				t.Fatalf("import did not reach connection verification: %v", err)
+			}
+			if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				t.Fatalf("verification must fail before context cancellation: %v (context: %v)", err, ctx.Err())
 			}
 			_, repo, cfg, err := utils.GetConfigStore()
 			if err != nil {
