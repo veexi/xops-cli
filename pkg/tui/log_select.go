@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/i18n"
 	"github.com/wentf9/xops-cli/pkg/ssh"
 )
@@ -126,7 +126,7 @@ func (m logSelectModel) Update(msg tea.Msg) (logSelectModel, tea.Cmd) {
 			}
 			cmd = m.list.SetItems(items)
 		}
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.isManual {
 			switch msg.String() {
 			case "enter":
@@ -162,6 +162,12 @@ func (m logSelectModel) Update(msg tea.Msg) (logSelectModel, tea.Cmd) {
 			}
 		}
 		m.list, cmd = m.list.Update(msg)
+	default:
+		if m.isManual {
+			m.textInput, cmd = m.textInput.Update(msg)
+		} else {
+			m.list, cmd = m.list.Update(msg)
+		}
 	}
 	return m, cmd
 }

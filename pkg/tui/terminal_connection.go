@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/adapter"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/credential"
@@ -224,7 +224,7 @@ func (m *Model) beginTerminalConnection(kind terminalConnectionKind, node string
 	action := &terminalConnection{kind: kind, nodeID: node, connector: connector, previous: m.connector, access: access, ctx: ctx, cancel: cancel, done: make(chan struct{}), warnUnavailable: automaticSavingUnavailable(m.repository, m.connectionConfig)}
 	m.connector = connector
 	m.terminalConnection = action
-	return tea.Exec(action, func(err error) tea.Msg { return terminalConnectionResult{action, err} })
+	return m.execTerminal(action, func(err error) tea.Msg { return terminalConnectionResult{action, err} })
 }
 func (m *Model) handleTerminalConnection(result terminalConnectionResult) tea.Cmd {
 	action := result.action

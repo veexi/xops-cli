@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/credential"
 )
@@ -48,7 +48,7 @@ func TestPendingConfigurationMutationBlocksFormNavigation(t *testing.T) {
 		mutationPending: true,
 		formState:       &nodeFormState{originalID: "node"},
 	}
-	updated, cmd := m.updateForm(tea.KeyMsg{Type: tea.KeyEscape})
+	updated, cmd := m.updateForm(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if cmd != nil {
 		t.Fatal("updateForm() returned a command while mutation is pending")
 	}
@@ -67,7 +67,7 @@ func TestConfigurationConflictRequiresExplicitReload(t *testing.T) {
 	m.formState = &nodeFormState{alias: "draft"}
 	m.formConflict = true
 
-	updated, cmd := m.updateForm(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.updateForm(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil {
 		t.Fatal("updateForm() returned a command before explicit reload")
 	}
@@ -75,7 +75,7 @@ func TestConfigurationConflictRequiresExplicitReload(t *testing.T) {
 		t.Fatalf("draft or conflict state changed before reload: %#v, conflict=%v", updated.formState, updated.formConflict)
 	}
 
-	updated, _ = updated.updateForm(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	updated, _ = updated.updateForm(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	if updated.formConflict {
 		t.Fatal("explicit reload did not clear conflict state")
 	}

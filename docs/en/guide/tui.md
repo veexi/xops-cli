@@ -4,6 +4,12 @@
 xops tui
 ```
 
+The interface uses the alternate screen and restores the original terminal contents on exit. Node filters, forms, log paths, and log searches accept terminal paste. The layout adjusts when the terminal is resized, including on Windows, without requiring a keypress or reopening the interface. At startup, the interface queries the terminal background color. Node lists, log lists, and forms use the light or dark palette matching the reply; refreshed lists retain that palette. Lists keep the default dark palette if the terminal does not reply. Unselected options in the tag form use a contrasting foreground for the background; selected tags retain their green highlight.
+
+Ctrl+Left/Right moves the cursor by word in text inputs, including node filters, forms, log paths, and log searches on Windows consoles.
+
+Before SSH sessions or credential-unlock prompts, the interface stops reading terminal input and resumes after returning. Ctrl+C or cancellation closes input reading and restores the terminal state.
+
 New installations use the offline credential store with key-file. Enter opens SSH, `m` opens monitoring, and `l` opens log selection. Follow the prompts to verify the host fingerprint and enter a password or private-key passphrase. Verified credentials are saved according to your policy. Returning to the UI preserves your filter, checked items, and current selection.
 
 Automatic saving covers authentication prompts initiated and successfully verified by XOps. Background monitoring and log collection cannot open authentication/unlock prompts or automatically write credentials.

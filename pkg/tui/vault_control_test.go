@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/credential"
 )
@@ -31,7 +31,7 @@ func TestVaultControlLockAndFailure(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlL})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl})
 	if cmd == nil || calls != 0 {
 		t.Fatal("control not deferred")
 	}

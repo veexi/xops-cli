@@ -346,28 +346,52 @@ func translateInteractiveKey(key coninput.KeyEventRecord) []byte {
 	if key.VirtualKeyCode == coninput.VK_SPACE && key.ControlKeyState&(coninput.LEFT_CTRL_PRESSED|coninput.RIGHT_CTRL_PRESSED) != 0 {
 		return []byte{0}
 	}
+	return translateInteractiveNavigationKey(key)
+}
+
+func translateInteractiveNavigationKey(key coninput.KeyEventRecord) []byte {
+	var sequence string
 	switch key.VirtualKeyCode {
 	case coninput.VK_UP:
-		return []byte("\x1b[A")
+		sequence = "A"
 	case coninput.VK_DOWN:
-		return []byte("\x1b[B")
+		sequence = "B"
 	case coninput.VK_RIGHT:
-		return []byte("\x1b[C")
+		sequence = "C"
 	case coninput.VK_LEFT:
-		return []byte("\x1b[D")
+		sequence = "D"
 	case coninput.VK_HOME:
-		return []byte("\x1b[H")
+		sequence = "H"
 	case coninput.VK_END:
-		return []byte("\x1b[F")
+		sequence = "F"
 	case coninput.VK_INSERT:
-		return []byte("\x1b[2~")
+		sequence = "2~"
 	case coninput.VK_DELETE:
-		return []byte("\x1b[3~")
+		sequence = "3~"
 	case coninput.VK_PRIOR:
-		return []byte("\x1b[5~")
+		sequence = "5~"
 	case coninput.VK_NEXT:
-		return []byte("\x1b[6~")
+		sequence = "6~"
 	default:
 		return nil
 	}
+	// Xterm CSI modifiers are 1 + Shift(1) + Alt(2) + Ctrl(4).
+	// Enhanced-key and lock-state bits are not keyboard modifiers.
+	modifier := 1
+	if key.ControlKeyState&coninput.SHIFT_PRESSED != 0 {
+		modifier += 1
+	}
+	if key.ControlKeyState&(coninput.LEFT_ALT_PRESSED|coninput.RIGHT_ALT_PRESSED) != 0 {
+		modifier += 2
+	}
+	if key.ControlKeyState&(coninput.LEFT_CTRL_PRESSED|coninput.RIGHT_CTRL_PRESSED) != 0 {
+		modifier += 4
+	}
+	if modifier == 1 {
+		return []byte("\x1b[" + sequence)
+	}
+	if len(sequence) == 1 {
+		return fmt.Appendf(nil, "\x1b[1;%d%s", modifier, sequence)
+	}
+	return fmt.Appendf(nil, "\x1b[%s;%d~", sequence[:len(sequence)-1], modifier)
 }

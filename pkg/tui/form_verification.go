@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/i18n"
 )
 
@@ -27,7 +27,7 @@ func (m *Model) handleFormVerification(msg configurationMutationMsg) (tea.Model,
 }
 
 func (m *Model) updateVerificationConfirmation(msg tea.Msg) (Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return *m, nil
 	}

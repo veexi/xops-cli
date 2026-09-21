@@ -4,12 +4,14 @@ package terminal
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"slices"
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/erikgeiser/coninput"
 	"golang.org/x/sys/windows"
 )
@@ -259,5 +261,91 @@ func TestWindowsInteractiveInputDecodesSurrogatePair(t *testing.T) {
 	n, err := reader.Read(buf[:])
 	if err != nil || string(buf[:n]) != "😀" {
 		t.Fatalf("surrogate pair: %q, %v", buf[:n], err)
+	}
+}
+
+func TestWindowsInteractiveNavigationModifiers(t *testing.T) {
+	keys := []struct {
+		name    string
+		code    coninput.VirtualKeyCode
+		decoded rune
+	}{
+		{"left", coninput.VK_LEFT, uv.KeyLeft},
+		{"right", coninput.VK_RIGHT, uv.KeyRight},
+		{"up", coninput.VK_UP, uv.KeyUp},
+		{"down", coninput.VK_DOWN, uv.KeyDown},
+		{"home", coninput.VK_HOME, uv.KeyHome},
+		{"end", coninput.VK_END, uv.KeyEnd},
+		{"insert", coninput.VK_INSERT, uv.KeyInsert},
+		{"delete", coninput.VK_DELETE, uv.KeyDelete},
+		{"pageup", coninput.VK_PRIOR, uv.KeyPgUp},
+		{"pagedown", coninput.VK_NEXT, uv.KeyPgDown},
+	}
+	modifiers := []struct {
+		name    string
+		state   coninput.ControlKeyState
+		decoded uv.KeyMod
+	}{
+		{"plain", 0, 0},
+		{"left ctrl", coninput.LEFT_CTRL_PRESSED, uv.ModCtrl},
+		{"right ctrl", coninput.RIGHT_CTRL_PRESSED, uv.ModCtrl},
+		{"left alt", coninput.LEFT_ALT_PRESSED, uv.ModAlt},
+		{"right alt", coninput.RIGHT_ALT_PRESSED, uv.ModAlt},
+		{"shift", coninput.SHIFT_PRESSED, uv.ModShift},
+		{"ctrl shift", coninput.LEFT_CTRL_PRESSED | coninput.SHIFT_PRESSED, uv.ModCtrl | uv.ModShift},
+		{"alt shift", coninput.LEFT_ALT_PRESSED | coninput.SHIFT_PRESSED, uv.ModAlt | uv.ModShift},
+		{"ctrl alt", coninput.LEFT_CTRL_PRESSED | coninput.LEFT_ALT_PRESSED, uv.ModCtrl | uv.ModAlt},
+		{"all", coninput.RIGHT_CTRL_PRESSED | coninput.RIGHT_ALT_PRESSED | coninput.SHIFT_PRESSED, uv.ModCtrl | uv.ModAlt | uv.ModShift},
+		{"lock states", coninput.CAPSLOCK_ON | coninput.NUMLOCK_ON | coninput.SCROLLLOCK_ON, 0},
+	}
+	for _, key := range keys {
+		for _, modifier := range modifiers {
+			t.Run(key.name+"/"+modifier.name, func(t *testing.T) {
+				// Include the enhanced-key flag and read one byte at a time to
+				// cover the same buffering/repeat path used by the owned reader.
+				reader := newTestWindowsConsolePromptReader([]coninput.EventRecord{
+					coninput.KeyEventRecord{KeyDown: false, VirtualKeyCode: key.code},
+					coninput.KeyEventRecord{KeyDown: true, VirtualKeyCode: key.code, RepeatCount: 2,
+						ControlKeyState: modifier.state | coninput.ENHANCED_KEY},
+				})
+				reader.interactive = true
+				want := uv.KeyPressEvent{Code: key.decoded, Mod: modifier.decoded}
+				encoded := reader.translateKeyEvent(coninput.KeyEventRecord{KeyDown: true, VirtualKeyCode: key.code,
+					ControlKeyState: modifier.state | coninput.ENHANCED_KEY, RepeatCount: 2})
+				var data []byte
+				for range len(encoded) {
+					var b [1]byte
+					n, err := reader.Read(b[:])
+					if err != nil || n != 1 {
+						t.Fatalf("read key byte: n=%d err=%v", n, err)
+					}
+					data = append(data, b[0])
+				}
+				var decoder uv.EventDecoder
+				for range 2 {
+					n, event := decoder.Decode(data)
+					got, ok := event.(uv.KeyPressEvent)
+					if n <= 0 || !ok || got.Code != want.Code || got.Mod != want.Mod {
+						t.Fatalf("decoded %q as %v, want %v", data, event, want)
+					}
+					data = data[n:]
+				}
+				if len(data) != 0 {
+					t.Fatalf("unconsumed navigation bytes: %q", data)
+				}
+			})
+		}
+	}
+}
+
+func TestWindowsInteractiveAltGrRemainsText(t *testing.T) {
+	for _, char := range []rune{'@', '界'} {
+		t.Run(fmt.Sprintf("%U", char), func(t *testing.T) {
+			key := coninput.KeyEventRecord{KeyDown: true, Char: char,
+				ControlKeyState: coninput.RIGHT_ALT_PRESSED | coninput.LEFT_CTRL_PRESSED}
+			if got := string(translateInteractiveKey(key)); got != string(char) {
+				t.Fatalf("AltGr text = %q, want %q", got, string(char))
+			}
+		})
 	}
 }

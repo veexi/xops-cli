@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/wentf9/xops-cli/cmd/utils"
 	"github.com/wentf9/xops-cli/pkg/config"
@@ -93,8 +92,7 @@ func NewCmdTui() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("create TUI model: %w", err)
 			}
-			p := tea.NewProgram(&model, tea.WithAltScreen(), tea.WithContext(ctx))
-			_, runErr := p.Run()
+			runErr := tui.Run(ctx, &model, nil, os.Stdout)
 			stop()
 			closeErr := model.Close()
 			if runErr != nil {

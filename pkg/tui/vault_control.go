@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // WithVaultControl injects process-local lock/unlock actions. Unlock runs with
@@ -25,7 +25,7 @@ func (*vaultControlCommand) SetStderr(io.Writer) {}
 func (m *Model) vaultCommand(unlock bool) tea.Cmd {
 	run := func() error { return m.runVaultControl(unlock) }
 	if unlock {
-		return tea.Exec(&vaultControlCommand{run: run}, func(err error) tea.Msg { return vaultControlResult{err} })
+		return m.execTerminal(&vaultControlCommand{run: run}, func(err error) tea.Msg { return vaultControlResult{err} })
 	}
 	return func() tea.Msg { return vaultControlResult{run()} }
 }
@@ -46,7 +46,7 @@ func (m *Model) handleVaultMessage(msg tea.Msg) (bool, tea.Cmd) {
 		}
 		return true, nil
 	}
-	if key, ok := msg.(tea.KeyMsg); ok && m.state == viewList && m.vaultControl != nil {
+	if key, ok := msg.(tea.KeyPressMsg); ok && m.state == viewList && m.vaultControl != nil {
 		switch key.String() {
 		case "ctrl+l":
 			return true, m.vaultCommand(false)

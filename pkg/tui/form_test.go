@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/models"
 	"github.com/wentf9/xops-cli/pkg/utils/concurrent"
@@ -278,7 +278,7 @@ func TestUpdateForm_CtrlS_Valid(t *testing.T) {
 	}
 
 	// 模拟 ctrl+s 按键
-	msgCtrlS := tea.KeyMsg{Type: tea.KeyCtrlS}
+	msgCtrlS := tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	updatedModel, cmd := m.updateForm(msgCtrlS)
 	if updatedModel.state != viewForm {
 		t.Errorf("expected state to remain viewForm while saving, got %v", updatedModel.state)
@@ -318,7 +318,7 @@ func TestUpdateForm_CtrlS_Invalid(t *testing.T) {
 	}
 
 	// 模拟 ctrl+s 按键
-	msgCtrlS := tea.KeyMsg{Type: tea.KeyCtrlS}
+	msgCtrlS := tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	updatedModel, _ := m.updateForm(msgCtrlS)
 
 	// 因为验证失败，不应该跳转回列表，依然是 viewForm
@@ -368,7 +368,7 @@ func TestUpdateForm_Esc(t *testing.T) {
 	}
 
 	// 模拟 esc 按键
-	msgEsc := tea.KeyMsg{Type: tea.KeyEsc}
+	msgEsc := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ := m.updateForm(msgEsc)
 
 	// 应切回 viewList

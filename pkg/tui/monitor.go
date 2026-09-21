@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/wentf9/xops-cli/pkg/i18n"
 	"github.com/wentf9/xops-cli/pkg/ssh"
 )
@@ -86,14 +86,14 @@ func (m monitorModel) Update(msg tea.Msg) (monitorModel, tea.Cmd) {
 			return m, nil
 		}
 		m.err = msg.err
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q":
 			if err := m.collector.Close(); err != nil {
 				m.err = err
 			}
 			return m, nil // Will be handled by parent model to switch state
-		case "p", " ":
+		case "p", "space":
 			m.paused = !m.paused
 			if !m.paused {
 				return m, m.fetchMetrics()

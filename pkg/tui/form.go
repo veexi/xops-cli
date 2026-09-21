@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"github.com/wentf9/xops-cli/pkg/adapter"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/credential"
@@ -216,13 +216,24 @@ func (m *Model) initForm(nodeID string) (Model, tea.Cmd) {
 	}
 	m.form = huh.NewForm(
 		huh.NewGroup(fields...),
-	).WithTheme(huh.ThemeCharm()).
+	).WithTheme(huh.ThemeFunc(formTheme)).
 		WithKeyMap(km).
 		WithWidth(m.lastSize.Width).
 		WithHeight(formHeight)
 
-	cmd := m.form.Init()
+	cmd := m.initEmbeddedForm(m.form)
 	return *m, cmd
+}
+
+// Forms opened after terminal discovery still need the v2 background message
+// to choose the same light or dark theme as forms already on screen.
+func (m *Model) initEmbeddedForm(form *huh.Form) tea.Cmd {
+	cmd := form.Init()
+	if m.backgroundColor != nil {
+		_, themeCmd := form.Update(*m.backgroundColor)
+		return tea.Batch(cmd, themeCmd)
+	}
+	return cmd
 }
 
 func (m *Model) newNodeFormState(nodeID string) (*nodeFormState, error) {
@@ -385,7 +396,7 @@ func (m *Model) updateForm(msg tea.Msg) (Model, tea.Cmd) {
 			m.form.WithWidth(msg.Width).WithHeight(formHeight)
 		}
 		return *m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.formConflict {
 			if msg.String() != "r" {
 				m.status = errorStyle.Render(i18n.T("tui_status_conflict_reload"))
@@ -820,7 +831,7 @@ func (m *Model) rebuildTagSelectForm() (Model, tea.Cmd) {
 					Title(i18n.T("tui_tag_new_input")).
 					Value(&m.newTagsInput),
 			),
-		).WithTheme(huh.ThemeCharm()).WithWidth(m.lastSize.Width).WithHeight(m.lastSize.Height - 1)
+		).WithTheme(huh.ThemeFunc(formTheme)).WithWidth(m.lastSize.Width).WithHeight(m.lastSize.Height - 1)
 	} else {
 		// 没有现有标签，只显示输入框
 		m.tagForm = huh.NewForm(
@@ -835,9 +846,9 @@ func (m *Model) rebuildTagSelectForm() (Model, tea.Cmd) {
 					Title(i18n.T("tui_tag_input")).
 					Value(&m.newTagsInput),
 			),
-		).WithTheme(huh.ThemeCharm()).WithWidth(m.lastSize.Width).WithHeight(m.lastSize.Height - 1)
+		).WithTheme(huh.ThemeFunc(formTheme)).WithWidth(m.lastSize.Width).WithHeight(m.lastSize.Height - 1)
 	}
-	return *m, m.tagForm.Init()
+	return *m, m.initEmbeddedForm(m.tagForm)
 }
 
 // updateTagSelect 处理标签选择视图的更新
@@ -851,7 +862,7 @@ func (m *Model) updateTagSelect(msg tea.Msg) (Model, tea.Cmd) {
 			m.tagForm.WithWidth(msg.Width).WithHeight(msg.Height - 1)
 		}
 		return *m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if msg.String() == "esc" {
 			m.state = viewList
 			*m, _ = m.updateList(m.lastSize)

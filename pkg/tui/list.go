@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/i18n"
 	"github.com/wentf9/xops-cli/pkg/ssh"
@@ -125,20 +125,7 @@ func newListModel(provider config.ConfigProvider) list.Model {
 		return items[i].(*nodeItem).name < items[j].(*nodeItem).name
 	})
 
-	// 获取默认委派器并进行自定义配置
-	delegate := checkedDelegate{DefaultDelegate: list.NewDefaultDelegate()}
-	// 设置光标所在行（Selected）的高亮样式
-	delegate.Styles.SelectedTitle = lipgloss.NewStyle().
-		Foreground(selectedColor).
-		Bold(true).
-		Border(lipgloss.NormalBorder(), false, false, false, true).
-		BorderForeground(selectedColor).
-		Padding(0, 0, 0, 1)
-
-	// 描述部分设置更暗的颜色
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("8")).
-		Bold(false)
+	delegate := newNodeDelegate(true)
 
 	l := list.New(items, delegate, 0, 0)
 	l.Title = i18n.T("tui_list_title")
@@ -207,7 +194,7 @@ func (m *Model) updateList(msg tea.Msg) (Model, tea.Cmd) {
 		m.list.SetSize(max(msg.Width-h, 1), max(msg.Height-v, 1))
 		return *m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKeyMsg(msg)
 	}
 
@@ -216,7 +203,7 @@ func (m *Model) updateList(msg tea.Msg) (Model, tea.Cmd) {
 	return *m, cmd
 }
 
-func (m *Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
+func (m *Model) handleKeyMsg(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if m.mutationPending {
 		return *m, nil
 	}
@@ -242,7 +229,7 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 // handleDeletePending 处理删除确认状态，返回 true 表示已处理
-func (m *Model) handleDeletePending(msg tea.KeyMsg) bool {
+func (m *Model) handleDeletePending(msg tea.KeyPressMsg) bool {
 	if !m.deletePending {
 		return false
 	}
@@ -259,7 +246,7 @@ func (m *Model) handleDeletePending(msg tea.KeyMsg) bool {
 func (m *Model) getKeyHandler(key string) (func() (Model, tea.Cmd), bool) {
 	handlers := map[string]func() (Model, tea.Cmd){
 		"enter": m.handleEnter,
-		" ":     m.handleSpace,
+		"space": m.handleSpace,
 		"a":     m.handleSelectAll,
 		"v":     m.handleInvertSelection,
 		"d":     m.handleDelete,
@@ -477,4 +464,23 @@ func (m *Model) handleTagAction() (Model, tea.Cmd) {
 	*m = m.initTagSelectForm()
 	m.state = viewTagSelect
 	return *m, nil
+}
+
+func newNodeDelegate(isDark bool) checkedDelegate {
+	delegate := checkedDelegate{DefaultDelegate: list.NewDefaultDelegate()}
+	delegate.Styles = list.NewDefaultItemStyles(isDark)
+	// 设置光标所在行（Selected）的高亮样式
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().
+		Foreground(selectedColor).
+		Bold(true).
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(selectedColor).
+		Padding(0, 0, 0, 1)
+
+	// 描述部分设置更暗的颜色
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedTitle.
+		Foreground(lipgloss.Color("8")).
+		Bold(false)
+
+	return delegate
 }

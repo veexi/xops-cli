@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"github.com/wentf9/xops-cli/pkg/adapter"
 	"github.com/wentf9/xops-cli/pkg/config"
 	"github.com/wentf9/xops-cli/pkg/credential"
@@ -31,6 +31,7 @@ const (
 )
 
 type Model struct {
+	terminalExec       terminalExecutor
 	terminalConnection *terminalConnection
 	terminalContext    context.Context
 	connectionConfig   modelConfig
@@ -54,6 +55,7 @@ type Model struct {
 	state              viewState
 	status             string
 	lastSize           tea.WindowSizeMsg
+	backgroundColor    *tea.BackgroundColorMsg
 	deletePending      bool
 	mutationPending    bool
 	mutation           *configurationMutation
@@ -260,6 +262,7 @@ func NewModel(repository *config.Repository, opts ...ModelOption) (Model, error)
 		listRevision:      view.Revision,
 	}
 	m.list = newListModelFromView(view)
+	m.applyNodeListTheme()
 	if automaticSavingUnavailable(repository, cfg) {
 		m.status = i18n.T("tui_credential_saving_unavailable")
 	}
@@ -269,6 +272,7 @@ func NewModel(repository *config.Repository, opts ...ModelOption) (Model, error)
 func (m *Model) refreshList() {
 	view := m.repository.View()
 	m.list = newListModelFromView(view)
+	m.applyNodeListTheme()
 	m.listRevision = view.Revision
 }
 
@@ -304,9 +308,7 @@ func (m *Model) setConfigurationStatus(status string) tea.Cmd {
 	m.statusGeneration++
 	m.status = status
 	generation := m.statusGeneration
-	return tea.Tick(3*time.Second, func(time.Time) tea.Msg {
-		return tickMsg{generation: generation}
-	})
+	return statusExpiryCmd(m.ctx, generation)
 }
 
 func (m *Model) handleConfigurationMutation(msg configurationMutationMsg) (tea.Model, tea.Cmd) {
@@ -411,6 +413,23 @@ type tickMsg struct {
 	generation uint64
 }
 
+// Status timers share the model lifetime, including shutdown during a handoff.
+func statusExpiryCmd(ctx context.Context, generation uint64) tea.Cmd {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return func() tea.Msg {
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-timer.C:
+			return tickMsg{generation: generation}
+		}
+	}
+}
+
 // handleAsyncMessage routes messages produced by connection and configuration
 // commands. It keeps the primary Bubble Tea update loop focused on lifecycle
 // events and view dispatch.
@@ -435,6 +454,7 @@ func (m *Model) handleAsyncMessage(msg tea.Msg) (bool, tea.Cmd) {
 		}
 		m.status = ""
 		m.logSelect = newLogSelectModel(m.ctx, msg.nodeID, msg.client, m.lastSize)
+		m.logSelect.applyTheme(m.hasDarkBackground())
 		m.state = viewLogSelect
 		return true, m.logSelect.Init()
 	case logFileSelectedMsg:
@@ -465,10 +485,17 @@ func (m *Model) handleAsyncMessage(msg tea.Msg) (bool, tea.Cmd) {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if background, ok := msg.(tea.BackgroundColorMsg); ok {
+		m.backgroundColor = &background
+		m.applyNodeListTheme()
+		if m.logSelect.ctx != nil {
+			m.logSelect.applyTheme(background.IsDark())
+		}
+	}
 	if _, ok := msg.(tickMsg); ok && m.terminalConnection != nil {
 		return m, nil
 	}
-	if key, ok := msg.(tea.KeyMsg); ok && m.terminalConnection != nil {
+	if key, ok := msg.(tea.KeyPressMsg); ok && m.terminalConnection != nil {
 		if key.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
@@ -483,7 +510,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.lastSize = msg
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
@@ -504,9 +531,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// If status was just set, start a timer to clear it
 	// 但如果是删除确认状态，我们不希望它自动消失
 	if m.status != "" && m.statusCanExpire() {
-		return m, tea.Batch(cmd, tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
-			return tickMsg{generation: m.statusGeneration}
-		}))
+		return m, tea.Batch(cmd, statusExpiryCmd(m.ctx, m.statusGeneration))
 	}
 
 	return m, cmd
@@ -524,7 +549,7 @@ func (m *Model) handleStateUpdate(msg tea.Msg) tea.Cmd {
 	case viewTagSelect:
 		*m, cmd = m.updateTagSelect(msg)
 	case viewMonitor:
-		if kmsg, ok := msg.(tea.KeyMsg); ok {
+		if kmsg, ok := msg.(tea.KeyPressMsg); ok {
 			if kmsg.String() == "esc" || kmsg.String() == "q" {
 				if err := m.monitor.collector.Close(); err != nil {
 					m.status = errorStyle.Render(fmt.Sprintf("Close monitor failed: %v", err))
@@ -539,7 +564,7 @@ func (m *Model) handleStateUpdate(msg tea.Msg) tea.Cmd {
 		m.monitor, mCmd = m.monitor.Update(msg)
 		cmd = mCmd
 	case viewLogSelect:
-		if kmsg, ok := msg.(tea.KeyMsg); ok {
+		if kmsg, ok := msg.(tea.KeyPressMsg); ok {
 			if (kmsg.String() == "esc" || kmsg.String() == "q") && !m.logSelect.isManual {
 				m.state = viewList
 				*m, _ = m.updateList(m.lastSize)
@@ -550,7 +575,7 @@ func (m *Model) handleStateUpdate(msg tea.Msg) tea.Cmd {
 		m.logSelect, lsCmd = m.logSelect.Update(msg)
 		cmd = lsCmd
 	case viewLogStream:
-		if kmsg, ok := msg.(tea.KeyMsg); ok {
+		if kmsg, ok := msg.(tea.KeyPressMsg); ok {
 			if (kmsg.String() == "esc" || kmsg.String() == "q") && !m.logStreamer.isSearching {
 				if err := m.logStreamer.Close(); err != nil {
 					m.status = errorStyle.Render(fmt.Sprintf("Close log stream failed: %v", err))
@@ -573,7 +598,7 @@ func (m *Model) handleStateUpdate(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	var s string
 	switch m.state {
 	case viewList:
@@ -603,7 +628,9 @@ func (m Model) View() string {
 		s += "\n\n" + statusStyle.Render(m.status)
 	}
 
-	return appStyle.Render(s)
+	view := tea.NewView(appStyle.Render(s))
+	view.AltScreen = true
+	return view
 }
 
 func credentialAdapterOptions(repository *config.Repository, cfg modelConfig) []adapter.Option {

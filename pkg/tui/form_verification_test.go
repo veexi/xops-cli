@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/wentf9/xops-cli/pkg/adapter"
 	"github.com/wentf9/xops-cli/pkg/config"
 )
@@ -56,12 +56,12 @@ func TestNewNodeFormVerificationPolicy(t *testing.T) {
 				m.Update(next())
 			} else if tc.answer != "" {
 				assertFormVerificationPrompt(t, m)
-				key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(tc.answer)}
+				key := tea.KeyPressMsg{Code: []rune(tc.answer)[0], Text: tc.answer}
 				if tc.answer == "enter" {
-					key = tea.KeyMsg{Type: tea.KeyEnter}
+					key = tea.KeyPressMsg{Code: tea.KeyEnter}
 				}
 				if tc.answer == "esc" {
-					key = tea.KeyMsg{Type: tea.KeyEsc}
+					key = tea.KeyPressMsg{Code: tea.KeyEscape}
 				}
 				_, save := m.updateVerificationConfirmation(key)
 				if tc.saved {

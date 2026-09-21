@@ -7,10 +7,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/wentf9/xops-cli/pkg/i18n"
 	"github.com/wentf9/xops-cli/pkg/ssh"
 )
@@ -55,7 +55,7 @@ func newLogStreamerModel(ctx context.Context, sessionID int64, client *ssh.Clien
 	ti := textinput.New()
 	ti.Placeholder = i18n.T("tui_log_search_prompt")
 
-	vp := viewport.New(size.Width, size.Height-3)
+	vp := viewport.New(viewport.WithWidth(max(size.Width, 1)), viewport.WithHeight(max(size.Height-3, 1)))
 
 	streamCtx, cancel := context.WithCancel(ctx)
 	return logStreamerModel{
@@ -159,8 +159,8 @@ func (m logStreamerModel) Update(msg tea.Msg) (logStreamerModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 3
+		m.viewport.SetWidth(max(msg.Width, 1))
+		m.viewport.SetHeight(max(msg.Height-3, 1))
 		m.updateViewportContent()
 
 	case logStreamSessionMsg:
@@ -185,7 +185,7 @@ func (m logStreamerModel) Update(msg tea.Msg) (logStreamerModel, tea.Cmd) {
 			m.err = msg.err
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.isSearching {
 			switch msg.String() {
 			case "enter":
@@ -224,6 +224,14 @@ func (m logStreamerModel) Update(msg tea.Msg) (logStreamerModel, tea.Cmd) {
 		}
 
 		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	default:
+		if m.isSearching {
+			m.textInput, cmd = m.textInput.Update(msg)
+			m.updateViewportContent()
+		} else {
+			m.viewport, cmd = m.viewport.Update(msg)
+		}
 		cmds = append(cmds, cmd)
 	}
 
