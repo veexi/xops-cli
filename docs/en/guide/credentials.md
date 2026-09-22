@@ -62,7 +62,9 @@ xops credential doctor
 
 ### Linux system keyring
 
-The `system` backend requires `secret-tool` (`libsecret-tools` on Ubuntu/Debian), a user D-Bus session, and Secret Service. Start and unlock the desktop keyring before running XOps. Ordinary `exec` can read unlocked credentials without `-x`. Batch execution and MCP never open unlock dialogs.
+The `system` backend requires `secret-tool` (`libsecret-tools` on Ubuntu/Debian), a user D-Bus session, and Secret Service. Batch execution and MCP never open unlock dialogs. When interactively deleting a node or identity, or running `xops credential gc`, XOps requests an unlock for matching keyring items before deleting credentials. Canceling the unlock or a cleanup failure preserves the recovery journal; unlock the keyring and run `xops credential gc` again.
+
+If matching items span multiple keyrings, unlocking only some of them leaves cleanup incomplete. Normal `attribute.*` metadata on the system tool's stderr is not an error. Even when the tool exits with code 0, item errors during unlock or deletion preserve the recovery journal. Unlock the remaining keyrings and run `xops credential gc` again.
 
 ## Authentication failures and temporary input
 

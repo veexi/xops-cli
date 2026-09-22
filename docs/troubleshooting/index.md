@@ -8,7 +8,7 @@
 
 ## 系统密钥库不可用或锁定
 
-Linux 的 `system` 后端需要 `secret-tool`、用户 D-Bus 会话和 Secret Service。Ubuntu/Debian 缺少工具时可安装 `libsecret-tools`。先启动并解锁桌面密钥环，再运行 `xops credential doctor`。
+Linux 的 `system` 后端需要 `secret-tool`、用户 D-Bus 会话和 Secret Service。Ubuntu/Debian 缺少工具时可安装 `libsecret-tools`。`credential doctor` 只执行非交互读取检查，不会弹出解锁窗口。交互式删除和 `xops credential gc` 会在清理前请求解锁；如果曾因锁定导致清理失败，解锁后重新运行 `xops credential gc`。
 
 从 SSH、计划任务或其他用户会话运行时，可能无法访问桌面的密钥库。无人值守任务可以使用默认 key-file 离线库；已有凭据更换存储时请按[迁移指南](../guide/migration)操作。
 

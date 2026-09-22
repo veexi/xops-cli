@@ -8,7 +8,7 @@ With `--remember never` or `credential.remember_prompted: never`, entered passwo
 
 ## System keyring unavailable or locked
 
-On Linux, the `system` backend requires `secret-tool`, a user D-Bus session, and Secret Service. Install `libsecret-tools` on Ubuntu/Debian if the tool is missing. Start and unlock your desktop keyring, then run `xops credential doctor`.
+On Linux, the `system` backend requires `secret-tool`, a user D-Bus session, and Secret Service. Install `libsecret-tools` on Ubuntu/Debian if the tool is missing. `credential doctor` performs only a non-interactive read check and never opens an unlock dialog. Interactive deletion and `xops credential gc` request an unlock before cleanup. If cleanup previously failed because the keyring was locked, unlock it and run `xops credential gc` again.
 
 SSH sessions, scheduled jobs, or sessions belonging to another user may not have access to the desktop keyring. Unattended jobs can use the default key-file offline store. Follow the [migration guide](../guide/migration) to move existing credentials.
 

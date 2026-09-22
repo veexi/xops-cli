@@ -218,6 +218,213 @@ func TestSystemStoreLinuxDBusFailureNotReportedAsNotFound(t *testing.T) {
 	}
 }
 
+func TestSystemStoreLinuxDeleteUnlocksMatchingItem(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping linux-specific test on non-linux")
+	}
+
+	tempDir := t.TempDir()
+	fakeScript := filepath.Join(tempDir, "secret-tool")
+	callLog := filepath.Join(tempDir, "calls")
+	unlocked := filepath.Join(tempDir, "unlocked")
+	scriptContent := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$TEST_SECRET_TOOL_CALLS"
+case "$1" in
+search)
+    if [ "$2" != "--all" ] || [ "$3" != "--unlock" ]; then
+        exit 2
+    fi
+    : > "$TEST_SECRET_TOOL_UNLOCKED"
+    printf 'secret = must-not-leak\n'
+    printf 'attribute.xops-item = locked-item\nattribute.xops-store = system\n' >&2
+    ;;
+clear)
+    test -f "$TEST_SECRET_TOOL_UNLOCKED"
+    ;;
+*)
+    exit 2
+    ;;
+esac
+`
+	if err := os.WriteFile(fakeScript, []byte(scriptContent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", tempDir+":"+os.Getenv("PATH"))
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/fake-bus")
+	t.Setenv("TEST_SECRET_TOOL_CALLS", callLog)
+	t.Setenv("TEST_SECRET_TOOL_UNLOCKED", unlocked)
+
+	store, err := newNativeSystemStore("system", SystemStoreConfig{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := credential.Ref{StoreID: "system", ItemID: "locked-item"}
+	if err := store.Delete(t.Context(), ref); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	calls, err := os.ReadFile(callLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "search --all --unlock xops-store system xops-item locked-item\n" +
+		"clear xops-store system xops-item locked-item\n"
+	if string(calls) != want {
+		t.Fatalf("unexpected secret-tool calls:\n%s\nwant:\n%s", calls, want)
+	}
+	if strings.Contains(string(calls), "must-not-leak") {
+		t.Fatal("secret-tool output leaked into diagnostics")
+	}
+}
+
+func TestSystemStoreLinuxDeleteStopsWhenUnlockFails(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping linux-specific test on non-linux")
+	}
+	for _, testCase := range []struct {
+		name     string
+		action   string
+		exitCode string
+		stderr   string
+		want     error
+	}{
+		{"nonzero exit", "search", "1", "", credential.ErrCredentialStoreLocked},
+		{"partial unlock", "search", "0", "secret-tool: Cannot get secret of a locked object", credential.ErrCredentialStoreLocked},
+		{"error after metadata", "search", "0", strings.Repeat("attribute.xops-store = system\n", 20) + "secret-tool: Cannot get secret of a locked object", credential.ErrCredentialStoreLocked},
+		{"truncated diagnostics", "search", "0", strings.Repeat("attribute.xops-store = system\n", 160) + "secret-tool: Cannot get secret of a locked object", credential.ErrCredentialStoreUnavailable},
+		{"localized failure", "search", "0", "secret-tool: 无法读取锁定条目", credential.ErrCredentialStoreUnavailable},
+		{"partial clear", "clear", "0", "secret-tool: Cannot delete a locked object", credential.ErrCredentialStoreLocked},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("TEST_SECRET_TOOL_FAIL_ACTION", testCase.action)
+			t.Setenv("TEST_SECRET_TOOL_EXIT", testCase.exitCode)
+			t.Setenv("TEST_SECRET_TOOL_STDERR", testCase.stderr)
+			testSystemStoreLinuxDeleteUnlockFailure(t, testCase.want)
+		})
+	}
+}
+
+func testSystemStoreLinuxDeleteUnlockFailure(t *testing.T, wantErr error) {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	fakeScript := filepath.Join(tempDir, "secret-tool")
+	callLog := filepath.Join(tempDir, "calls")
+	scriptContent := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$TEST_SECRET_TOOL_CALLS"
+if [ "$1" = "search" ]; then
+    printf 'secret = must-not-leak\n'
+    printf 'attribute.xops-item = locked-item\nattribute.xops-store = system\n' >&2
+fi
+if [ "$1" = "$TEST_SECRET_TOOL_FAIL_ACTION" ]; then
+    printf '%s' "$TEST_SECRET_TOOL_STDERR" >&2
+    exit "$TEST_SECRET_TOOL_EXIT"
+fi
+exit 0
+`
+	if err := os.WriteFile(fakeScript, []byte(scriptContent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", tempDir+":"+os.Getenv("PATH"))
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/fake-bus")
+	t.Setenv("TEST_SECRET_TOOL_CALLS", callLog)
+
+	store, err := newNativeSystemStore("system", SystemStoreConfig{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := credential.Ref{StoreID: "system", ItemID: "locked-item"}
+	if err := store.Delete(t.Context(), ref); !errors.Is(err, wantErr) {
+		t.Fatalf("Delete error = %v, want %v", err, wantErr)
+	}
+
+	calls, err := os.ReadFile(callLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "search --all --unlock xops-store system xops-item locked-item\n"
+	if os.Getenv("TEST_SECRET_TOOL_FAIL_ACTION") == "clear" {
+		want += "clear xops-store system xops-item locked-item\n"
+	}
+	if string(calls) != want {
+		t.Fatalf("delete continued after failed unlock:\n%s\nwant:\n%s", calls, want)
+	}
+	assertSystemStoreCleanupRecovery(t, store, ref, wantErr)
+}
+
+func assertSystemStoreCleanupRecovery(t *testing.T, store credential.Store, ref credential.Ref, wantErr error) {
+	t.Helper()
+	registry := credential.NewRegistry()
+	if err := registry.Register("system", store); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := credential.NewJournalStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := credential.NewService(registry, journal, deletedAssetConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := service.DeleteAssets(t.Context(), []credential.Ref{ref}, func(context.Context) (credential.MutationOutcome, error) {
+		return credential.MutationOutcome{Applied: true, Durable: true}, nil
+	})
+	var cleanup *credential.CleanupError
+	if !outcome.Durable || !errors.As(err, &cleanup) || !errors.Is(err, wantErr) {
+		t.Fatalf("asset deletion lost cleanup failure: %+v, %v", outcome, err)
+	}
+	if strings.Contains(err.Error(), "must-not-leak") {
+		t.Fatal("cleanup error exposed search output")
+	}
+	service, err = credential.NewService(registry, journal, deletedAssetConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := service.GC(t.Context())
+	if err != nil || len(results) != 1 || !errors.Is(results[0].Err, wantErr) || results[0].Action != credential.RecoveryActionScheduledForGC {
+		t.Fatalf("GC lost partial cleanup failure: %+v, %v", results, err)
+	}
+	assertSystemStorePendingCleanup(t, journal, 1)
+	t.Setenv("TEST_SECRET_TOOL_STDERR", "")
+	t.Setenv("TEST_SECRET_TOOL_EXIT", "0")
+	results, err = service.GC(t.Context())
+	if err != nil || len(results) != 1 || results[0].Err != nil || results[0].Action != credential.RecoveryActionCommittedCleaned {
+		t.Fatalf("GC did not complete after unlocking: %+v, %v", results, err)
+	}
+	assertSystemStorePendingCleanup(t, journal, 0)
+}
+
+func assertSystemStorePendingCleanup(t *testing.T, journal *credential.JournalStore, want int) {
+	t.Helper()
+	pending, err := journal.ListPending()
+	if err != nil || len(pending) != want {
+		t.Fatalf("pending journals = %+v, %v; want %d", pending, err, want)
+	}
+	for _, entry := range pending {
+		if entry.Stage != credential.StageCleanup {
+			t.Fatalf("journal stage = %s, want cleanup", entry.Stage)
+		}
+	}
+}
+
+type deletedAssetConfig struct{}
+
+func (deletedAssetConfig) CheckRefUnreferenced(context.Context, credential.Ref) (bool, error) {
+	return true, nil
+}
+
+func (deletedAssetConfig) ApplyCredentialRefAtVersion(context.Context, credential.Target, string, *credential.Ref) (credential.MutationOutcome, string, error) {
+	return credential.MutationOutcome{}, "", errors.New("unexpected credential mutation during asset cleanup")
+}
+
+func (deletedAssetConfig) ConfirmRefDurable(context.Context, credential.Target, *credential.Ref) (bool, error) {
+	return false, errors.New("unexpected target durability check during asset cleanup")
+}
+
 func TestInternalSystemHelperProtocolValidation(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {

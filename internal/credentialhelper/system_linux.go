@@ -123,9 +123,12 @@ func (s *linuxNativeStore) Delete(ctx context.Context, ref credential.Ref) error
 	if s.readOnly {
 		return credential.ErrCredentialStoreReadOnly
 	}
+	if err := s.unlockMatchingItems(ctx, ref); err != nil {
+		return err
+	}
 	args := []string{"clear", "xops-store", ref.StoreID, "xops-item", ref.ItemID}
 	_, stderr, err := s.execCmd(ctx, args, nil)
-	if err != nil {
+	if err != nil || stderr != "" {
 		if errors.Is(err, context.Canceled) {
 			return context.Canceled
 		}
@@ -141,6 +144,43 @@ func (s *linuxNativeStore) Delete(ctx context.Context, ref credential.Ref) error
 		return fmt.Errorf("secret-tool clear failed: %w", err)
 	}
 	return nil
+}
+
+func (s *linuxNativeStore) unlockMatchingItems(ctx context.Context, ref credential.Ref) error {
+	args := []string{"search", "--all", "--unlock", "xops-store", ref.StoreID, "xops-item", ref.ItemID}
+	stdout, stderr, err := s.execCmd(ctx, args, nil)
+	defer clear(stdout)
+	if err == nil && stderr == "" {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, credential.ErrCredentialStoreUnavailable) || errors.Is(err, credential.ErrCredentialStoreLocked) {
+		return err
+	}
+	if strings.Contains(strings.ToLower(stderr), "locked") {
+		return fmt.Errorf("%w: %s", credential.ErrCredentialStoreLocked, stderr)
+	}
+	if stderr != "" {
+		return fmt.Errorf("%w: secret-tool unlock failed: %s", credential.ErrCredentialStoreUnavailable, stderr)
+	}
+	return fmt.Errorf("%w: secret-tool unlock failed: %w", credential.ErrCredentialStoreLocked, err)
+}
+
+func secretToolDiagnostics(args []string, stderr string) string {
+	if len(args) == 0 || args[0] != "search" {
+		return stderr
+	}
+	var diagnostics strings.Builder
+	for line := range strings.Lines(stderr) {
+		key, _, ok := strings.Cut(line, " = ")
+		if ok && strings.HasPrefix(key, "attribute.") && len(key) > len("attribute.") {
+			continue
+		}
+		diagnostics.WriteString(line)
+	}
+	return diagnostics.String()
 }
 
 func (s *linuxNativeStore) execCmd(ctx context.Context, args []string, stdinData []byte) ([]byte, string, error) {
@@ -205,7 +245,8 @@ func (s *linuxNativeStore) execCmd(ctx context.Context, args []string, stdinData
 	close(cancelDone)
 	cancelWg.Wait()
 
-	sanitizedStderr := SanitizeDiagnostic(stderrLimiter.buf.String(), string(stdinData))
+	diagnostic := secretToolDiagnostics(args, stderrLimiter.buf.String())
+	sanitizedStderr := SanitizeDiagnostic(diagnostic, string(stdinData))
 
 	if execCtx.Err() != nil {
 		_ = session.KillTree()
@@ -221,6 +262,9 @@ func (s *linuxNativeStore) execCmd(ctx context.Context, args []string, stdinData
 	// 严格检查 stdout 输出上限
 	if stdoutLimiter.total > MaxResponseBytes {
 		return nil, sanitizedStderr, fmt.Errorf("%w: secret-tool output exceeded maximum limit of %d bytes", credential.ErrCredentialStoreUnavailable, MaxResponseBytes)
+	}
+	if stderrLimiter.total > MaxStderrBytes {
+		return nil, sanitizedStderr, fmt.Errorf("%w: secret-tool diagnostics exceeded maximum limit of %d bytes", credential.ErrCredentialStoreUnavailable, MaxStderrBytes)
 	}
 
 	if runErr != nil && isNotFoundErr(runErr) {

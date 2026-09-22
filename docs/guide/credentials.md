@@ -62,7 +62,9 @@ xops credential doctor
 
 ### Linux 系统密钥库
 
-`system` 需要 `secret-tool`（Ubuntu/Debian 包名为 `libsecret-tools`）、用户 D-Bus 会话和 Secret Service。先启动桌面密钥环服务并解锁，再运行 XOps。普通 `exec` 可以读取已解锁的凭据，不需要 `-x`；批处理和 MCP 不会弹出解锁窗口。
+`system` 需要 `secret-tool`（Ubuntu/Debian 包名为 `libsecret-tools`）、用户 D-Bus 会话和 Secret Service。批处理和 MCP 不会弹出解锁窗口。交互式删除节点、身份或执行 `xops credential gc` 时，XOps 会先请求解锁匹配的密钥库条目，再删除凭据；取消解锁或清理失败时会保留恢复 Journal，可在解锁密钥库后重新运行 `xops credential gc`。
+
+如果匹配条目分布在多个密钥环中，只解锁其中一部分仍算清理未完成。系统工具在 stderr 中输出的正常 `attribute.*` 元数据不算错误；即使退出码为 0，解锁或删除报告的条目错误仍会使 XOps 保留恢复 Journal。解锁其余密钥环后可再次运行 `xops credential gc`。
 
 ## 认证失败与临时输入
 

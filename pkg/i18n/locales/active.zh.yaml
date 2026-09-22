@@ -979,7 +979,7 @@ credential_doctor_healthy:
 credential_gc_short:
   other: "回收未被任何节点引用的孤儿凭据与清理残留 Journal"
 credential_gc_long:
-  other: "安全扫描凭据持久化日志与未引用的孤儿凭据，执行安全垃圾回收。默认具备 24 小时宽限期防护。"
+  other: "安全扫描凭据持久化日志与未引用的孤儿凭据，执行安全垃圾回收。默认具备 24 小时宽限期防护；Linux 系统密钥库可能请求解锁匹配条目。"
 credential_gc_no_pending:
   other: "没有发现需要回收的孤儿凭据或待清理 Journal"
 credential_gc_completed:

@@ -978,7 +978,7 @@ credential_doctor_healthy:
 credential_gc_short:
   other: "Garbage collect unreferenced orphan credentials and pending journals"
 credential_gc_long:
-  other: "Safely scan credential journals and unreferenced orphan credentials to perform garbage collection. Protected by a 24-hour grace period."
+  other: "Safely scan credential journals and unreferenced orphan credentials. Protected by a 24-hour grace period; the Linux system keyring may request an unlock for matching items."
 credential_gc_no_pending:
   other: "No pending journals or unreferenced orphan credentials found"
 credential_gc_completed:
